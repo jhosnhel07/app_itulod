@@ -1,0 +1,102 @@
+﻿import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/constants/app_colors.dart';
+import '../../../../core/constants/app_typography.dart';
+import '../../../../shared/widgets/app_button.dart';
+import '../../../../shared/widgets/avatar_widget.dart';
+import '../../../../shared/widgets/status_badge.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
+
+class AdminDashboardScreen extends ConsumerWidget {
+  const AdminDashboardScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(authNotifierProvider).profile;
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        title: const Text('Admin Console'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () => ref.read(authNotifierProvider.notifier).signOut(),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: AppColors.primaryGradient,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: AppColors.elevatedShadow,
+                ),
+                child: Row(
+                  children: [
+                    AvatarWidget(
+                      name: profile?.fullName ?? 'Admin',
+                      url: profile?.avatarUrl,
+                      radius: 28,
+                      ring: true,
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(profile?.fullName ?? 'Administrator',
+                              style:
+                                  AppTypography.h3.copyWith(color: Colors.white)),
+                          const SizedBox(height: 4),
+                          Text(
+                            profile?.email ?? '',
+                            style: AppTypography.caption
+                                .copyWith(color: Colors.white70),
+                          ),
+                          const SizedBox(height: 8),
+                          const StatusBadge(status: 'System Admin'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.admin_panel_settings_outlined, color: AppColors.primary, size: 48),
+                      const SizedBox(height: 12),
+                      Text('Admin Dashboard Active', style: AppTypography.h3),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Full administrative control over Users, Riders, Vehicles, Bookings, Payments, and Announcements.',
+                        style: AppTypography.body.copyWith(color: AppColors.neutral600),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 32),
+              AppButton(
+                text: 'Sign Out',
+                type: AppButtonType.outline,
+                onPressed: () => ref.read(authNotifierProvider.notifier).signOut(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter analyze *)",
+      "Bash(flutter test *)",
+      "Bash(flutter devices *)",
+      "WebSearch",
+      "Bash(curl -sS --max-time 20 \"https://pub.dev/api/packages/flutter_map\" -o /tmp/fm.json)",
+      "Bash(echo \"exit=$?\")",
+      "Read(//tmp/**)",
+      "Bash(flutter --version)",
+      "Bash(curl -sS --max-time 20 \"https://pub.dev/api/packages/flutter_map\")",
+      "Bash(curl -sS --max-time 20 \"https://pub.dev/api/packages/geolocator\")",
+      "Bash(dart --version)",
+      "Bash(grep -rn \"^final .*Provider = \\\\|^final .*Provider =$\" lib/)",
+      "Bash(sed 's/static const Color //')",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:pub.dev)",
+      "Bash(flutter pub *)",
+      "Bash(PUB=/c/Users/acer/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_map-8.3.1; sed -n '55,220p' \"$PUB/lib/src/map/options/options.dart\")",
+      "Bash(PUB=/c/Users/acer/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_map-8.3.1; echo \"=== TileProvider abstract ===\"; sed -n '1,90p' \"$PUB/lib/src/layer/tile_layer/tile_provider/base.dart\")",
+      "Read(//c/Users/acer/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_map-8.3.1/lib//**)",
+      "Read(//c/Users/acer/AppData/Local/Pub/Cache/hosted/pub.dev/flutter_map-8.3.1/lib/src/layer/polyline_layer/**)",
+      "Bash(grep -v \"usage policy\\\\|OpenStreetMap.*polic\\\\|^$\")",
+      "Bash(cp lib/features/customer/presentation/widgets/route_preview_map.dart /tmp/rpm_fixed.dart)",
+      "Bash(python -)",
+      "Bash(grep -Ev \"usage policy|tile servers|Please review|flutter_map\\\\]|operations\\\\.osmfoundation|docs\\\\.fleaflet|We want to help|for your project|See:|^ *$\")"
+    ]
+  }
+}
