@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../utils/app_log.dart';
+
 final locationServiceProvider = Provider<LocationService>((ref) {
   return const LocationService();
 });
@@ -81,8 +83,9 @@ class LocationService {
       return LocationResult.success(
         LatLng(position.latitude, position.longitude),
       );
-    } catch (_) {
+    } catch (e, s) {
       // Timeouts, no-fix, Windows privacy settings, web insecure origin.
+      AppLog.warn('currentPosition: location fix failed', e, s);
       return const LocationResult.failed(LocationFailure.unavailable);
     }
   }

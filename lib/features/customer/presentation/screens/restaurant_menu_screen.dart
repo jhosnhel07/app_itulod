@@ -1,0 +1,109 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../shared/models/restaurant_models.dart';
+import '../../data/restaurant_repository.dart';
+import '../providers/cart_provider.dart';
+import '../../../../core/constants/app_typography.dart';
+import 'food_cart_screen.dart';
+
+class RestaurantMenuScreen extends ConsumerStatefulWidget {
+  final RestaurantModel restaurant;
+
+  const RestaurantMenuScreen({super.key, required this.restaurant});
+
+  @override
+  ConsumerState<RestaurantMenuScreen> createState() => _RestaurantMenuScreenState();
+}
+
+class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
+  List<MenuItemModel>? _menuItems;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMenu();
+  }
+
+  Future<void> _loadMenu() async {
+    try {
+      final repo = ref.read(restaurantRepositoryProvider);
+      final items = await repo.getMenuItems(widget.restaurant.id);
+      if (mounted) {
+        setState(() {
+          _menuItems = items;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading menu: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cartState = ref.watch(cartProvider);
+
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.restaurant.name)),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _menuItems == null || _menuItems!.isEmpty
+              ? const Center(child: Text('No menu items available'))
+              : ListView.builder(
+                  itemCount: _menuItems!.length,
+                  itemBuilder: (context, index) {
+                    final item = _menuItems![index];
+                    final cartItem = cartState.items[item.id];
+                    
+                    return ListTile(
+                      title: Text(item.name, style: AppTypography.bodyBold),
+                      subtitle: Text('\$${item.price.toStringAsFixed(2)}\n${item.description ?? ""}'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (cartItem != null && cartItem.quantity > 0) ...[
+                            IconButton(
+                              icon: const Icon(Icons.remove_circle_outline),
+                              onPressed: () {
+                                ref.read(cartProvider.notifier).removeItem(item.id);
+                              },
+                            ),
+                            Text('${cartItem.quantity}'),
+                          ],
+                          IconButton(
+                            icon: const Icon(Icons.add_circle_outline),
+                            onPressed: () {
+                              ref.read(cartProvider.notifier).addItem(widget.restaurant, item);
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+      bottomNavigationBar: cartState.totalItems > 0
+          ? SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const FoodCartScreen()),
+                    );
+                  },
+                  child: Text('View Cart (${cartState.totalItems}) - \$${cartState.totalPrice.toStringAsFixed(2)}'),
+                ),
+              ),
+            )
+          : null,
+    );
+  }
+}

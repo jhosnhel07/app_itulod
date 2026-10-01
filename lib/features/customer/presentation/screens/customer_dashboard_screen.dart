@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
+import '../../../../core/supabase/realtime_refresh.dart';
 import '../../../../shared/screens/profile_screen.dart';
 import '../../../../shared/widgets/avatar_widget.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -18,10 +19,40 @@ class CustomerDashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _CustomerDashboardScreenState
-    extends ConsumerState<CustomerDashboardScreen> {
+    extends ConsumerState<CustomerDashboardScreen>
+    with RealtimeRefreshMixin {
   int _index = 0;
 
   static const _titles = ['Home', 'My Bookings', 'Notifications', 'Profile'];
+
+  @override
+  void initState() {
+    super.initState();
+    startRealtime(
+      channelName: 'customer-dashboard',
+      tables: const [
+        'transport_bookings',
+        'food_deliveries',
+        'parcel_deliveries',
+        'notifications',
+      ],
+      onChange: () {
+        ref.invalidate(customerHomeSummaryProvider);
+        ref.invalidate(customerHistoryProvider);
+        ref.invalidate(notificationsProvider);
+        ref.invalidate(unreadNotificationsProvider);
+      },
+    );
+    // Automatic booking expiration: catches anything the 15-minute grace
+    // period has already caught up with the instant this dashboard opens,
+    // then keeps re-checking every minute while it's open.
+    startExpirySweep(
+      onChange: () {
+        ref.invalidate(customerHomeSummaryProvider);
+        ref.invalidate(customerHistoryProvider);
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

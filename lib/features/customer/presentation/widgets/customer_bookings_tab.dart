@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
+import '../../../../core/utils/app_log.dart';
 import '../../../../shared/models/booking_models.dart';
 import '../../../../shared/screens/booking_details_sheet.dart';
 import '../../../../shared/widgets/booking_card.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/customer_repository.dart';
-import '../screens/gcash_checkout_screen.dart';
+import 'cancellation_dialog.dart';
+import 'gcash_pay_action.dart';
 
 final customerHistoryProvider = FutureProvider.autoDispose
     .family<List<BookingBase>, BookingKind>((ref, kind) async {
@@ -60,8 +62,7 @@ class _CustomerBookingsTabState extends ConsumerState<CustomerBookingsTab>
             type: AppButtonType.danger,
             onPressed: () async {
               Navigator.pop(sheetContext);
-              await repo.cancelBooking(booking);
-              ref.invalidate(customerHistoryProvider);
+              await showCancellationDialog(context, ref, booking);
             },
           );
         }
@@ -79,7 +80,19 @@ class _CustomerBookingsTabState extends ConsumerState<CustomerBookingsTab>
             icon: Icons.account_balance_wallet_rounded,
             onPressed: () {
               Navigator.pop(sheetContext);
-              _payWithGcash(booking);
+              payBookingWithGcash(context, ref, booking);
+            },
+          );
+        }
+        Widget? disputeAction;
+        if (booking.status == 'completed' || booking.status == 'cancelled') {
+          disputeAction = AppButton(
+            text: 'Report Issue / Dispute',
+            icon: Icons.report_problem_outlined,
+            type: AppButtonType.secondary,
+            onPressed: () {
+              Navigator.pop(sheetContext);
+              _showDisputeDialog(booking);
             },
           );
         }
@@ -92,6 +105,10 @@ class _CustomerBookingsTabState extends ConsumerState<CustomerBookingsTab>
               const SizedBox(height: 8),
               rateAction,
             ],
+            if (disputeAction != null) ...[
+              const SizedBox(height: 8),
+              disputeAction,
+            ],
           ],
         );
       },
@@ -99,30 +116,59 @@ class _CustomerBookingsTabState extends ConsumerState<CustomerBookingsTab>
     ref.invalidate(customerHistoryProvider);
   }
 
-  Future<void> _payWithGcash(BookingBase booking) async {
-    final repo = ref.read(customerRepositoryProvider);
-    try {
-      final checkoutUrl = await repo.createGcashCheckoutUrl(booking.id);
-      if (!mounted) return;
-      final success = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => GcashCheckoutScreen(checkoutUrl: checkoutUrl)),
-      );
-      if (mounted && success == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Payment submitted — confirming with GCash...'),
-            backgroundColor: AppColors.success,
+  Future<void> _showDisputeDialog(BookingBase booking) async {
+    final reasonController = TextEditingController();
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Report an Issue'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Please describe the issue with this booking:', style: AppTypography.captionDark),
+            const SizedBox(height: 8),
+            TextField(
+              controller: reasonController,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                hintText: 'Driver was late, item damaged, overcharged, etc.',
+                isDense: true,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Submit Dispute'),
           ),
+        ],
+      ),
+    );
+
+    if (submitted == true && reasonController.text.trim().isNotEmpty) {
+      try {
+        await ref.read(customerRepositoryProvider).createDispute(
+          bookingId: booking.id,
+          bookingType: booking.kind.name, // e.g. transport, food, parcel
+          reason: reasonController.text.trim(),
         );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not start GCash payment: $e'), backgroundColor: AppColors.danger),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Your dispute has been submitted for review.'), backgroundColor: AppColors.success),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not submit dispute: $e'), backgroundColor: AppColors.danger),
+          );
+        }
       }
     }
-    ref.invalidate(customerHistoryProvider);
   }
 
   Future<void> _showRatingDialog(BookingBase booking) async {
@@ -181,7 +227,17 @@ class _CustomerBookingsTabState extends ConsumerState<CustomerBookingsTab>
             const SnackBar(content: Text('Thanks for your feedback!'), backgroundColor: AppColors.success),
           );
         }
-      } catch (_) {}
+      } catch (e, s) {
+        AppLog.warn('submitRating failed', e, s);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not save your rating. Please try again.'),
+              backgroundColor: AppColors.danger,
+            ),
+          );
+        }
+      }
       if (mounted) setState(() {});
     }
     if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,7 @@ import '../../../../core/constants/app_strings.dart';
 import '../../../../core/constants/vehicle_catalog.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../shared/models/profile_model.dart';
+import '../../data/auth_repository.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/auth_gradient_button.dart';
 import '../widgets/auth_logo_row.dart';
@@ -40,6 +42,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   bool _obscureConfirmPassword = true;
   bool _agreedToTerms = false;
   int _passwordScore = 0;
+
+  bool _isCheckingEmail = false;
+  bool? _isEmailAvailable;
+  Timer? _emailDebounceTimer;
 
   final _vehicleFormKey = GlobalKey<FormState>();
   String _selectedVehicleType = 'Motorcycle';
@@ -75,6 +81,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _confirmPasswordController.dispose();
     _vehiclePlateController.dispose();
     _vehicleColorController.dispose();
+    _emailDebounceTimer?.cancel();
     super.dispose();
   }
 
@@ -142,8 +149,104 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
   }
 
+  void _onEmailChanged(String val) {
+    if (val.trim().isEmpty || Validators.email(val) != null) {
+      if (_isCheckingEmail || _isEmailAvailable != null) {
+        setState(() {
+          _isCheckingEmail = false;
+          _isEmailAvailable = null;
+        });
+      }
+      _emailDebounceTimer?.cancel();
+      return;
+    }
+    
+    setState(() {
+      _isCheckingEmail = true;
+      _isEmailAvailable = null;
+    });
+
+    _emailDebounceTimer?.cancel();
+    _emailDebounceTimer = Timer(const Duration(milliseconds: 600), () async {
+      final exists = await ref.read(authRepositoryProvider).checkEmailExists(val);
+      if (mounted) {
+        setState(() {
+          _isCheckingEmail = false;
+          _isEmailAvailable = !exists;
+        });
+      }
+    });
+  }
+
+  Widget _buildEmailFeedback() {
+    if (_isCheckingEmail) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 18),
+        child: Row(
+          children: [
+            const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.brandBlue),
+            ),
+            const SizedBox(width: 8),
+            Text('Checking availability...', style: GoogleFonts.inter(fontSize: 12, color: AppColors.slate)),
+          ],
+        ),
+      );
+    }
+
+    if (_isEmailAvailable == true) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 18),
+        child: Row(
+          children: [
+            const FaIcon(FontAwesomeIcons.check, size: 14, color: AppColors.success),
+            const SizedBox(width: 8),
+            Text('Available', style: GoogleFonts.inter(fontSize: 12, color: AppColors.success, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      );
+    }
+
+    if (_isEmailAvailable == false) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 18),
+        child: Row(
+          children: [
+            const FaIcon(FontAwesomeIcons.triangleExclamation, size: 14, color: AppColors.danger),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () => context.go('/login'),
+              child: Text(
+                'This email is already registered — log in instead',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: AppColors.brandBlue,
+                  fontWeight: FontWeight.w600,
+                  decoration: TextDecoration.underline,
+                  decorationColor: AppColors.brandBlue,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    return const SizedBox.shrink();
+  }
+
   Future<void> _submitPersonal() async {
     if (!_personalFormKey.currentState!.validate()) return;
+    if (_isCheckingEmail) {
+      _showError('Please wait while we check email availability.');
+      return;
+    }
+    if (_isEmailAvailable == false) {
+      _showError('This email is already registered. Please log in instead.');
+      return;
+    }
     if (!_agreedToTerms) {
       _showError('Please accept the Terms & Privacy Policy.');
       return;
@@ -473,7 +576,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
             validator: Validators.email,
+            onChanged: _onEmailChanged,
+            bottomPadding: (_isCheckingEmail || _isEmailAvailable != null) ? 0 : 18,
           ),
+          if (_emailController.text.isNotEmpty && (_isCheckingEmail || _isEmailAvailable != null))
+            _buildEmailFeedback(),
           if (isRider)
             AuthTextField(
               label: "Driver's License Number",

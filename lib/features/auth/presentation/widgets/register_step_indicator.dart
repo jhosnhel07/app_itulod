@@ -15,6 +15,12 @@ class RegisterStepIndicator extends StatelessWidget {
 
   static const labels = ['Role', 'Personal', 'Vehicle', 'Documents', 'Review'];
 
+  /// Progress accent follows the chosen role: iTULOD blue for a customer
+  /// sign-up, warm rose for a rider application.
+  static const Color _customerAccent = Color(0xFF2196F3);
+  static const Color _riderAccent = Color(0xFFB06B79);
+  Color get _accent => isRider ? _riderAccent : _customerAccent;
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -44,9 +50,9 @@ class RegisterStepIndicator extends StatelessWidget {
                                 margin: const EdgeInsets.only(left: 18),
                                 height: 2,
                                 color: completed
-                                    ? AppColors.success
+                                    ? _accent
                                     : active
-                                        ? AppColors.brandBlue.withValues(alpha: 0.45)
+                                        ? _accent.withValues(alpha: 0.45)
                                         : const Color(0xFFE5E7EB),
                               ),
                             ),
@@ -57,22 +63,20 @@ class RegisterStepIndicator extends StatelessWidget {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: completed
-                                ? AppColors.success
+                                ? _accent
                                 : active
-                                    ? AppColors.brandBlue
+                                    ? _accent
                                     : Colors.white,
                             border: Border.all(
-                              color: completed
-                                  ? AppColors.success
-                                  : active
-                                      ? AppColors.brandBlue
-                                      : const Color(0xFFE5E7EB),
+                              color: completed || active
+                                  ? _accent
+                                  : const Color(0xFFE5E7EB),
                               width: 2,
                             ),
                             boxShadow: active
                                 ? [
                                     BoxShadow(
-                                      color: AppColors.brandBlue.withValues(alpha: 0.15),
+                                      color: _accent.withValues(alpha: 0.15),
                                       blurRadius: 0,
                                       spreadRadius: 4,
                                     ),
@@ -102,11 +106,7 @@ class RegisterStepIndicator extends StatelessWidget {
                       fontSize: 9.5,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 0.3,
-                      color: completed
-                          ? AppColors.success
-                          : active
-                              ? AppColors.brandBlue
-                              : AppColors.iconMuted,
+                      color: completed || active ? _accent : AppColors.iconMuted,
                     ),
                   ),
                 ],

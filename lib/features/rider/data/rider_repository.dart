@@ -1,6 +1,8 @@
+import 'dart:io' as dart_io;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/supabase/supabase_client.dart';
+import '../../../core/utils/app_log.dart';
 import '../../../shared/models/booking_models.dart';
 
 final riderRepositoryProvider = Provider<RiderRepository>((ref) {
@@ -23,22 +25,156 @@ class RiderEarnings {
   });
 }
 
+/// "Your day at a glance" snapshot for the rider home tab — mirrors the web
+/// dashboard's rider home view.
+class RiderHomeSnapshot {
+  final double earningsToday;
+  final int tripsToday;
+  final double averageRating;
+  final int openRequests;
+  final List<BookingBase> activeBookings;
+
+  const RiderHomeSnapshot({
+    this.earningsToday = 0,
+    this.tripsToday = 0,
+    this.averageRating = 0,
+    this.openRequests = 0,
+    this.activeBookings = const [],
+  });
+
+  BookingBase? get primaryActive {
+    if (activeBookings.isEmpty) return null;
+    return activeBookings.firstWhere(
+      (b) => b.status == 'ongoing',
+      orElse: () => activeBookings.first,
+    );
+  }
+}
+
 class RiderRepository {
   final SupabaseClient _supabase;
 
   RiderRepository(this._supabase);
 
+  // ── Online presence ───────────────────────────────────────────────────
+
+  Future<bool> fetchOnlineStatus(String riderId) async {
+    try {
+      final response = await _supabase
+          .from('rider_locations')
+          .select('is_online')
+          .eq('rider_id', riderId)
+          .maybeSingle();
+      return (response?['is_online'] as bool?) ?? false;
+    } catch (e, s) {
+      AppLog.warn('fetchOnlineStatus failed', e, s);
+      return false;
+    }
+  }
+
+  Future<void> setOnlineStatus(String riderId, bool isOnline) async {
+    await _supabase
+        .from('rider_locations')
+        .upsert({'rider_id': riderId, 'is_online': isOnline});
+  }
+
+  // ── Home snapshot ─────────────────────────────────────────────────────
+
+  Future<RiderHomeSnapshot> fetchHomeSnapshot(String riderId, double floatAmount) async {
+    if (riderId.isEmpty) return const RiderHomeSnapshot();
+
+    final startOfDay = () {
+      final now = DateTime.now();
+      return DateTime(now.year, now.month, now.day);
+    }();
+
+    // Today's payouts.
+    var earningsToday = 0.0;
+    var tripsToday = 0;
+    try {
+      final payments = await _supabase
+          .from('payments')
+          .select('rider_payout, created_at')
+          .eq('rider_id', riderId);
+      for (final row in (payments as List)) {
+        final created =
+            DateTime.tryParse(row['created_at'] as String? ?? '')?.toLocal();
+        if (created == null || created.isBefore(startOfDay)) continue;
+        earningsToday += (row['rider_payout'] as num?)?.toDouble() ?? 0;
+        tripsToday++;
+      }
+    } catch (e, s) {
+      AppLog.warn('fetchHomeSnapshot: payments query failed', e, s);
+    }
+
+    // Average rating.
+    var ratingSum = 0.0;
+    var ratingCount = 0;
+    try {
+      final reviews = await _supabase
+          .from('reviews')
+          .select('rating')
+          .eq('rider_id', riderId);
+      for (final row in (reviews as List)) {
+        ratingSum += (row['rating'] as num?)?.toDouble() ?? 0;
+        ratingCount++;
+      }
+    } catch (e, s) {
+      AppLog.warn('rider reviews query failed', e, s);
+    }
+
+    // Open (unassigned, pending) request count + this rider's active bookings.
+    var openRequests = 0;
+    final active = <BookingBase>[];
+    for (final kind in BookingKind.values) {
+      var query = _supabase
+          .from(kind.tableName)
+          .select('id')
+          .filter('rider_id', 'is', null)
+          .eq('status', 'pending');
+          
+      if (kind == BookingKind.food) {
+        query = query.lte('total_items_price', floatAmount);
+      }
+
+      final open = await query;
+      openRequests += (open as List).length;
+
+      final mine = await _supabase
+          .from(kind.tableName)
+          .select()
+          .eq('rider_id', riderId)
+          .inFilter('status', ['accepted', 'ongoing'])
+          .order('created_at', ascending: false);
+      active.addAll((mine as List).map((json) => _fromRow(kind, json)));
+    }
+
+    return RiderHomeSnapshot(
+      earningsToday: earningsToday,
+      tripsToday: tripsToday,
+      averageRating: ratingCount > 0 ? ratingSum / ratingCount : 0,
+      openRequests: openRequests,
+      activeBookings: active,
+    );
+  }
+
   // ── Requests ──────────────────────────────────────────────────────────
 
-  Future<List<BookingBase>> fetchOpenRequests() async {
+  Future<List<BookingBase>> fetchOpenRequests(double floatAmount) async {
     final results = <BookingBase>[];
     for (final kind in BookingKind.values) {
-      final response = await _supabase
+      var query = _supabase
           .from(kind.tableName)
           .select()
           .filter('rider_id', 'is', null)
-          .eq('status', 'pending')
-          .order('created_at', ascending: false);
+          .eq('status', 'pending');
+      
+      if (kind == BookingKind.food) {
+        // Only show food deliveries if the rider has enough float to cover the items price
+        query = query.lte('total_items_price', floatAmount);
+      }
+
+      final response = await query.order('created_at', ascending: false);
       results.addAll((response as List).map((json) => _fromRow(kind, json)));
     }
     results.sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -83,46 +219,62 @@ class RiderRepository {
     return false;
   }
 
+  /// Advances a booking's status. The client only ever writes `status` —
+  /// locking `final_fare`, marking cash as paid, and inserting the `payments`
+  /// ledger row (with the platform commission split) are all done server-side
+  /// by the `booking_before_update` trigger (migration 005). Writing those
+  /// columns from here would now be rejected by that trigger / RLS.
   Future<void> updateStatus(
     BookingBase booking,
     String status, {
     required String riderId,
+    String? dropoffPhotoUrl,
   }) async {
-    final updates = <String, dynamic>{'status': status};
+    await _supabase
+        .from(booking.kind.tableName)
+        .update({
+          'status': status,
+          if (dropoffPhotoUrl != null) 'dropoff_photo_url': dropoffPhotoUrl,
+        }).eq('id', booking.id);
+  }
 
-    if (status == 'completed') {
-      final fare = booking.finalFare ?? booking.estimatedFare ?? 0;
-      updates['final_fare'] = double.parse(fare.toStringAsFixed(2));
+  Future<void> cancelAndRematchBooking(BookingBase booking) async {
+    await _supabase.from(booking.kind.tableName).update({
+      'status': 'pending',
+      'rider_id': null,
+    }).eq('id', booking.id);
+  }
 
-      // Cash on delivery/collection: rider collects and marks paid.
-      final method = booking.paymentMethod ?? 'cash';
-      if (method == 'cash') {
-        updates['payment_status'] = 'paid';
-      }
+  Future<String> uploadDropoffPhoto(String bookingId, String filePath) async {
+    final file = dart_io.File(filePath);
+    final ext = filePath.split('.').last;
+    final path = 'dropoffs/${bookingId}_${DateTime.now().millisecondsSinceEpoch}.$ext';
+    await _supabase.storage.from('deliveries').upload(path, file);
+    return _supabase.storage.from('deliveries').getPublicUrl(path);
+  }
 
-      await _supabase.from(booking.kind.tableName).update(updates).eq('id', booking.id);
+  Future<void> adjustFoodBill(String bookingId, double actualCost, String receiptPath) async {
+    final file = dart_io.File(receiptPath);
+    final ext = receiptPath.split('.').last;
+    final path = 'receipts/${bookingId}_${DateTime.now().millisecondsSinceEpoch}.$ext';
+    await _supabase.storage.from('deliveries').upload(path, file);
+    final url = _supabase.storage.from('deliveries').getPublicUrl(path);
+    
+    await _supabase.from('food_deliveries').update({
+      'actual_food_cost': actualCost,
+      'receipt_photo_url': url,
+    }).eq('id', bookingId);
+  }
 
-      // Record the payment ledger entry.
-      final commission = double.parse((fare * 0.15).toStringAsFixed(2));
-      try {
-        await _supabase.from('payments').insert({
-          'customer_id': booking.customerId,
-          'rider_id': riderId,
-          'booking_type': booking.kind.name,
-          'booking_id': booking.id,
-          'amount': double.parse(fare.toStringAsFixed(2)),
-          'platform_commission': commission,
-          'rider_payout': double.parse((fare - commission).toStringAsFixed(2)),
-          'method': method == 'cash' ? 'cash' : method,
-          'status': 'paid',
-        });
-      } catch (_) {
-        // Ledger insert is non-fatal — booking completion already succeeded.
-      }
-      return;
+  Future<void> markItemOutOfStock(String bookingId, int itemIndex) async {
+    final response = await _supabase.from('food_deliveries').select('items').eq('id', bookingId).single();
+    final items = List<dynamic>.from(response['items'] ?? []);
+    if (itemIndex >= 0 && itemIndex < items.length) {
+      final item = Map<String, dynamic>.from(items[itemIndex]);
+      item['is_out_of_stock'] = true;
+      items[itemIndex] = item;
+      await _supabase.from('food_deliveries').update({'items': items}).eq('id', bookingId);
     }
-
-    await _supabase.from(booking.kind.tableName).update(updates).eq('id', booking.id);
   }
 
   // ── History ───────────────────────────────────────────────────────────
@@ -132,7 +284,7 @@ class RiderRepository {
         .from(kind.tableName)
         .select()
         .eq('rider_id', riderId)
-        .inFilter('status', ['completed', 'cancelled'])
+        .inFilter('status', ['completed', 'cancelled', 'expired', 'no_show'])
         .order('created_at', ascending: false);
     return (response as List).map((json) => _fromRow(kind, json)).toList();
   }
@@ -179,7 +331,9 @@ class RiderRepository {
         ratingSum += (row['rating'] as num?)?.toDouble() ?? 0;
         ratingCount++;
       }
-    } catch (_) {}
+    } catch (e, s) {
+      AppLog.warn('rider reviews query failed', e, s);
+    }
 
     return RiderEarnings(
       today: today,
@@ -188,6 +342,10 @@ class RiderRepository {
       averageRating: ratingCount > 0 ? ratingSum / ratingCount : 0,
       last7Days: daily,
     );
+  }
+
+  Future<void> updateFloatAmount(String riderId, double amount) async {
+    await _supabase.from('profiles').update({'float_amount': amount}).eq('id', riderId);
   }
 
   BookingBase _fromRow(BookingKind kind, Map<String, dynamic> json) {

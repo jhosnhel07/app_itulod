@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
+import '../../../../core/supabase/realtime_refresh.dart';
 import '../../../../shared/models/rider_application_model.dart';
 import '../../../../shared/screens/profile_screen.dart';
 import '../../../../shared/widgets/avatar_widget.dart';
@@ -9,26 +10,104 @@ import '../../../../shared/widgets/status_badge.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../widgets/rider_earnings_tab.dart';
 import '../widgets/rider_history_tab.dart';
+import '../widgets/rider_home_tab.dart';
 import '../widgets/rider_requests_tab.dart';
 import '../widgets/rider_trip_tab.dart';
+
+final riderOnlineStatusProvider = StateNotifierProvider<RiderOnlineNotifier, AsyncValue<bool>>((ref) {
+  final profile = ref.watch(authNotifierProvider).profile;
+  if (profile == null) return RiderOnlineNotifier(null, null);
+  final repo = ref.read(riderRepositoryProvider);
+  return RiderOnlineNotifier(repo, profile.id);
+});
+
+class RiderOnlineNotifier extends StateNotifier<AsyncValue<bool>> {
+  final RiderRepository? _repo;
+  final String? _riderId;
+
+  RiderOnlineNotifier(this._repo, this._riderId) : super(const AsyncValue.loading()) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (_repo == null || _riderId == null) {
+      state = const AsyncValue.data(false);
+      return;
+    }
+    final isOnline = await _repo!.fetchOnlineStatus(_riderId!);
+    state = AsyncValue.data(isOnline);
+  }
+
+  Future<void> setOnline(bool isOnline) async {
+    if (_repo == null || _riderId == null) return;
+    state = AsyncValue.data(isOnline);
+    try {
+      await _repo!.setOnlineStatus(_riderId!, isOnline);
+    } catch (e) {
+      // Revert on failure
+      state = AsyncValue.data(!isOnline);
+    }
+  }
+}
 
 class RiderDashboardScreen extends ConsumerStatefulWidget {
   const RiderDashboardScreen({super.key});
 
   @override
-  ConsumerState<RiderDashboardScreen> createState() => _RiderDashboardScreenState();
+  ConsumerState<RiderDashboardScreen> createState() =>
+      _RiderDashboardScreenState();
 }
 
-class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen> {
+class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
+    with RealtimeRefreshMixin {
   int _index = 0;
+
+  static const _requestsTab = 1;
+  static const _tripTab = 2;
+
+  @override
+  void initState() {
+    super.initState();
+    startRealtime(
+      channelName: 'rider-dashboard',
+      tables: const [
+        'transport_bookings',
+        'food_deliveries',
+        'parcel_deliveries',
+        'payments',
+      ],
+      onChange: () {
+        ref.invalidate(riderHomeSnapshotProvider);
+        ref.invalidate(riderRequestsProvider);
+        ref.invalidate(riderActiveBookingsProvider);
+        ref.invalidate(riderEarningsProvider);
+      },
+    );
+    // Automatic booking expiration: catches anything the 15-minute grace
+    // period has already caught up with the instant this dashboard opens,
+    // then keeps re-checking every minute while it's open.
+    startExpirySweep(
+      onChange: () {
+        ref.invalidate(riderHomeSnapshotProvider);
+        ref.invalidate(riderRequestsProvider);
+        ref.invalidate(riderActiveBookingsProvider);
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final profile = ref.watch(authNotifierProvider).profile;
     final application = ref.watch(authNotifierProvider).riderApplication;
     final approved = application?.status == ApplicationStatus.approved;
+    final onlineAsync = ref.watch(riderOnlineStatusProvider);
 
     final tabs = [
+      RiderHomeTab(
+        onGoToTab: (i) => setState(() => _index = i),
+        requestsTabIndex: _requestsTab,
+        tripTabIndex: _tripTab,
+      ),
       const RiderRequestsTab(),
       const RiderTripTab(),
       const RiderEarningsTab(),
@@ -80,8 +159,25 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen> {
                       ],
                     ),
                   ),
-                  if (application != null)
+                  if (approved) ...[
+                    Text(
+                      onlineAsync.valueOrNull == true ? 'Online' : 'Offline',
+                      style: AppTypography.captionBold.copyWith(
+                        color: onlineAsync.valueOrNull == true ? AppColors.success : Colors.white70,
+                      ),
+                    ),
+                    Switch(
+                      value: onlineAsync.valueOrNull ?? false,
+                      onChanged: (val) {
+                        ref.read(riderOnlineStatusProvider.notifier).setOnline(val);
+                      },
+                      activeColor: AppColors.success,
+                      activeTrackColor: Colors.white24,
+                      inactiveTrackColor: Colors.white12,
+                    ),
+                  ] else if (application != null) ...[
                     StatusBadge(status: application.status.name),
+                  ]
                 ],
               ),
             ),
@@ -99,35 +195,41 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen> {
           border: Border(top: BorderSide(color: AppColors.divider)),
         ),
         child: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.inbox_outlined),
-            selectedIcon: Icon(Icons.inbox_rounded),
-            label: 'Requests',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.route_outlined),
-            selectedIcon: Icon(Icons.route_rounded),
-            label: 'Trip',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.payments_outlined),
-            selectedIcon: Icon(Icons.payments_rounded),
-            label: 'Earnings',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.history_outlined),
-            selectedIcon: Icon(Icons.history_rounded),
-            label: 'History',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person_rounded),
-            label: 'Profile',
-          ),
-        ],
+          selectedIndex: _index,
+          onDestinationSelected: (i) => setState(() => _index = i),
+          labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home_rounded),
+              label: 'Home',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.inbox_outlined),
+              selectedIcon: Icon(Icons.inbox_rounded),
+              label: 'Requests',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.route_outlined),
+              selectedIcon: Icon(Icons.route_rounded),
+              label: 'Trip',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.payments_outlined),
+              selectedIcon: Icon(Icons.payments_rounded),
+              label: 'Earnings',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.history_outlined),
+              selectedIcon: Icon(Icons.history_rounded),
+              label: 'History',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.person_outline),
+              selectedIcon: Icon(Icons.person_rounded),
+              label: 'Profile',
+            ),
+          ],
         ),
       ),
     );
@@ -176,12 +278,16 @@ class _VehicleInfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final rows = <MapEntry<String, String>>[
       MapEntry('Status', application.status.name),
-      if (application.vehicleType.isNotEmpty) MapEntry('Vehicle type', application.vehicleType),
-      if (application.vehiclePlate != null && application.vehiclePlate!.isNotEmpty)
+      if (application.vehicleType.isNotEmpty)
+        MapEntry('Vehicle type', application.vehicleType),
+      if (application.vehiclePlate != null &&
+          application.vehiclePlate!.isNotEmpty)
         MapEntry('Plate number', application.vehiclePlate!),
-      if (application.vehicleModel != null && application.vehicleModel!.isNotEmpty)
+      if (application.vehicleModel != null &&
+          application.vehicleModel!.isNotEmpty)
         MapEntry('Model', application.vehicleModel!),
-      if (application.licenseNumber != null && application.licenseNumber!.isNotEmpty)
+      if (application.licenseNumber != null &&
+          application.licenseNumber!.isNotEmpty)
         MapEntry('License no.', application.licenseNumber!),
     ];
 
@@ -214,7 +320,10 @@ class _VehicleInfoCard extends StatelessWidget {
                       width: 110,
                       child: Text(row.key, style: AppTypography.captionDark),
                     ),
-                    Expanded(child: Text(row.value, style: AppTypography.bodyMedium.copyWith(fontSize: 13))),
+                    Expanded(
+                        child: Text(row.value,
+                            style: AppTypography.bodyMedium
+                                .copyWith(fontSize: 13))),
                   ],
                 ),
               )),

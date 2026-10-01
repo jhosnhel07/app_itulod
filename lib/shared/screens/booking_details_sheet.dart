@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/constants/app_strings.dart';
 import '../../core/constants/app_typography.dart';
 import '../../core/supabase/supabase_client.dart';
+import '../../core/utils/app_log.dart';
 import '../../core/utils/formatters.dart';
 import '../models/booking_models.dart';
 import '../widgets/status_badge.dart';
@@ -45,8 +47,10 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
           .select('full_name, phone, avatar_url')
           .eq('id', riderId)
           .maybeSingle();
-      setState(() => _riderProfile = row);
-    } catch (_) {}
+      if (mounted) setState(() => _riderProfile = row);
+    } catch (e, s) {
+      AppLog.warn('BookingDetailsSheet: rider profile lookup failed', e, s);
+    }
     if (mounted) setState(() => _loadingRider = false);
   }
 
@@ -89,7 +93,11 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
                         StatusBadge(status: b.status),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
+                    if (_expiryNotice(b) != null) ...[
+                      _noticeBanner(_expiryNotice(b)!),
+                      const SizedBox(height: 16),
+                    ],
                     _section('Route', [
                       _detailRow('From', _pickup(b)),
                       _detailRow('To', _dropoff(b)),
@@ -248,6 +256,46 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
         ],
       ),
     ]);
+  }
+
+  /// The right expiration copy for the booking's current stage, or null once
+  /// it's past pending/accepted/expired.
+  String? _expiryNotice(BookingBase b) {
+    if (b.isExpired) return AppStrings.bookingExpiredMessage;
+    if (b.status == 'pending') return AppStrings.pendingGracePeriodNote;
+    if (b.status == 'accepted') return AppStrings.gracePeriodNote;
+    return null;
+  }
+
+  Widget _noticeBanner(String message) {
+    final isExpired = message == AppStrings.bookingExpiredMessage;
+    final color = isExpired ? AppColors.neutral500 : AppColors.warning;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isExpired ? AppColors.neutral100 : AppColors.warning50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isExpired ? Icons.timer_off_rounded : Icons.hourglass_top_rounded,
+            size: 18,
+            color: color,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTypography.captionDark.copyWith(fontSize: 12.5),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _section(String title, List<Widget> children) {

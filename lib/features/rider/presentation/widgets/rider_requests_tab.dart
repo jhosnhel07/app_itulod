@@ -13,7 +13,9 @@ import '../../data/rider_repository.dart';
 final riderRequestsProvider =
     FutureProvider.autoDispose<List<BookingBase>>((ref) async {
   final repo = ref.watch(riderRepositoryProvider);
-  return repo.fetchOpenRequests();
+  final profile = ref.watch(authNotifierProvider).profile;
+  if (profile == null) return [];
+  return repo.fetchOpenRequests(profile.floatAmount);
 });
 
 final riderActiveBookingsProvider =
@@ -116,6 +118,21 @@ class RiderRequestsTab extends ConsumerWidget {
                           style: AppTypography.bodyMedium.copyWith(fontSize: 14),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis),
+                      if (b.expiresAt != null) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(Icons.hourglass_top_rounded,
+                                size: 12, color: AppColors.warning),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Expires ${Formatters.timeOnly(b.expiresAt)}',
+                              style: AppTypography.caption.copyWith(
+                                  color: AppColors.warning, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       Row(
                         children: [

@@ -8,6 +8,15 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 
+    <!-- Profile photo / rider document upload (image_picker). READ_MEDIA_IMAGES
+         covers Android 13+; the legacy permission covers older OS builds and
+         OEM forks (e.g. some HiOS/ColorOS devices) that don't fully implement
+         the permission-less system photo picker. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
+
     <application
         android:label="app_itulod"
         android:name="${applicationName}"

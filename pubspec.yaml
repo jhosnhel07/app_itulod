@@ -55,10 +55,30 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^5.0.0
 
+  # Generates the native launch screen so the ~1s of engine + Supabase startup
+  # shows the branded splash instead of a blank/black window.
+  flutter_native_splash: ^2.4.3
+  # Used only by tool/make_splash_icon.dart (one-off asset prep).
+  image: ^4.9.2
+
 flutter:
   uses-material-design: true
 
   assets:
     - .env
     - assets/images/logo.png
+    - assets/images/splash_icon.png
+    - assets/images/splash_native.png
+
+# Native launch screen — matches lib/features/splash/splash_view.dart.
+# Regenerate after edits:  dart run flutter_native_splash:create
+flutter_native_splash:
+  color: "#F8FAFC"
+  image: assets/images/splash_native.png
+  android_12:
+    color: "#F8FAFC"
+    image: assets/images/splash_native.png
+  android: true
+  ios: true
+  web: false
 

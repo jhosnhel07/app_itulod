@@ -117,6 +117,19 @@ Deno.serve(async (req) => {
         }
         return new Response(JSON.stringify({ error: paymentJson }), { status: 502 });
       }
+
+      // GCash payments created against an already-chargeable source settle
+      // synchronously — PayMongo's response here already says "paid", so mark
+      // the booking paid right now instead of waiting on the separate
+      // payment.paid event, which can lag behind by several seconds (or, in
+      // rare redelivery gaps, never arrive at all).
+      const createdPayment = paymentJson?.data;
+      if (bookingId && createdPayment?.attributes?.status === "paid") {
+        await supabase
+          .from("transport_bookings")
+          .update({ payment_status: "paid", payment_id: createdPayment.id ?? null })
+          .eq("id", bookingId);
+      }
     } else if (eventType === "payment.paid" || eventType === "payment.failed") {
       const sourceId = resource?.attributes?.source?.id as string | undefined;
       const bookingId = sourceId ? await findBookingBySourceId(sourceId) : undefined;

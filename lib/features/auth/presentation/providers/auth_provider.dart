@@ -1,6 +1,8 @@
-﻿import 'dart:io';
+﻿import 'dart:async';
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/utils/app_log.dart';
 import '../../../../shared/models/profile_model.dart';
 import '../../../../shared/models/rider_application_model.dart';
 import '../../../../shared/models/vehicle_model.dart';
@@ -63,8 +65,25 @@ class AuthNotifier extends StateNotifier<AppAuthState> {
   /// requires email confirmation before the account can log in.
   bool lastSignupNeedsEmailConfirm = false;
 
+  final Completer<void> _bootstrapped = Completer<void>();
+
+  /// Completes once the very first auth resolution has landed — the state has
+  /// moved to `authenticated` or `unauthenticated`. The splash screen awaits
+  /// this so it can route to a definite destination with no flash.
+  Future<void> get bootstrapped => _bootstrapped.future;
+
   AuthNotifier(this._repo) : super(const AppAuthState()) {
     _init();
+  }
+
+  @override
+  set state(AppAuthState value) {
+    super.state = value;
+    if (!_bootstrapped.isCompleted &&
+        (value.status == AuthStatus.authenticated ||
+            value.status == AuthStatus.unauthenticated)) {
+      _bootstrapped.complete();
+    }
   }
 
   void _init() {
@@ -239,7 +258,8 @@ class AuthNotifier extends StateNotifier<AppAuthState> {
             file: file,
             kind: kind,
           );
-        } catch (_) {
+        } catch (e, s) {
+          AppLog.warn('signUpRider: "$kind" document upload failed', e, s);
           return null;
         }
       }

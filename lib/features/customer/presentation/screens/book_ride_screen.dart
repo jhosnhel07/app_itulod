@@ -9,7 +9,10 @@ import '../../../../core/utils/formatters.dart';
 import '../../../../shared/models/vehicle_model.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../widgets/location_picker_field.dart';
 import '../widgets/route_preview_map.dart';
+import '../widgets/riders_near_you_map.dart';
+import '../providers/saved_addresses_provider.dart';
 import 'booking_confirmation_screen.dart';
 import 'map_picker_screen.dart';
 
@@ -30,6 +33,10 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
   LatLng? _pickupPoint;
   LatLng? _destinationPoint;
 
+  final List<TextEditingController> _stopControllers = [];
+  final List<LatLng?> _stopPoints = [];
+  static const int _maxStops = 3;
+
   /// Road route from OSRM. Null means it hasn't answered (or failed), in which
   /// case the straight-line estimate stands in.
   RouteResult? _route;
@@ -38,6 +45,7 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
 
   VehicleModel? _vehicle;
   String _paymentMethod = 'cash';
+  DateTime? _scheduledFor;
 
   bool get _hasBothPoints => _pickupPoint != null && _destinationPoint != null;
 
@@ -49,7 +57,17 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
     final pickup = _pickupPoint;
     final destination = _destinationPoint;
     if (pickup == null || destination == null) return null;
-    return FareEstimator.roadDistanceKm(pickup, destination);
+    
+    double total = 0;
+    LatLng prev = pickup;
+    for (final stop in _stopPoints) {
+      if (stop != null) {
+        total += FareEstimator.roadDistanceKm(prev, stop);
+        prev = stop;
+      }
+    }
+    total += FareEstimator.roadDistanceKm(prev, destination);
+    return total;
   }
 
   double? get _fare {
@@ -65,31 +83,80 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
   void dispose() {
     _pickupController.dispose();
     _destinationController.dispose();
+    for (final c in _stopControllers) {
+      c.dispose();
+    }
     super.dispose();
   }
 
   // ── Location picking ──────────────────────────────────────────────────
 
-  Future<void> _pickLocation({required bool isPickup}) async {
-    final picked = await MapPickerScreen.show(
-      context,
-      title: isPickup ? 'Set pickup location' : 'Set destination',
-      pinColor: isPickup ? AppColors.success : AppColors.danger,
-      // Opening on the last known point saves the customer a pan; the
-      // destination picker starts from the pickup when it has nothing else.
-      initialCenter: isPickup ? _pickupPoint : (_destinationPoint ?? _pickupPoint),
-      initialAddress: isPickup
-          ? _nullIfEmpty(_pickupController.text)
-          : _nullIfEmpty(_destinationController.text),
-    );
+  Future<void> _pickLocation({required bool isPickup, int? stopIndex}) async {
+    final title = isPickup ? 'Set pickup location' : (stopIndex != null ? 'Set stop ${stopIndex + 1}' : 'Set destination');
+    final initialCenter = isPickup ? _pickupPoint : (stopIndex != null ? _stopPoints[stopIndex] : _destinationPoint) ?? _pickupPoint;
+    final initialAddress = isPickup
+        ? _nullIfEmpty(_pickupController.text)
+        : (stopIndex != null ? _nullIfEmpty(_stopControllers[stopIndex].text) : _nullIfEmpty(_destinationController.text));
+
+    // Ask user to pick from saved addresses or map
+    final savedAddresses = ref.read(savedAddressesProvider).value ?? [];
+    PickedLocation? picked;
+
+    if (savedAddresses.isNotEmpty) {
+      picked = await showModalBottomSheet<PickedLocation>(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.map_rounded),
+                title: const Text('Choose on Map'),
+                onTap: () {
+                  Navigator.pop(ctx, PickedLocation(address: '', point: const LatLng(0,0))); // Sentinel value for map
+                },
+              ),
+              const Divider(),
+              for (final addr in savedAddresses)
+                ListTile(
+                  leading: const Icon(Icons.location_on_rounded),
+                  title: Text(addr.label),
+                  subtitle: Text(addr.address, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  onTap: () {
+                    Navigator.pop(ctx, PickedLocation(address: addr.address, point: LatLng(addr.latitude, addr.longitude)));
+                  },
+                ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      // Just map if no saved addresses
+      picked = PickedLocation(address: '', point: const LatLng(0,0));
+    }
+
+    if (picked == null) return;
+    if (picked.address.isEmpty) { // Sentinel value, open map
+      picked = await MapPickerScreen.show(
+        context,
+        title: title,
+        pinColor: isPickup ? AppColors.success : AppColors.danger,
+        initialCenter: initialCenter,
+        initialAddress: initialAddress,
+      );
+    }
+    
     if (picked == null || !mounted) return;
 
     setState(() {
       if (isPickup) {
-        _pickupController.text = picked.address;
+        _pickupController.text = picked!.address;
         _pickupPoint = picked.point;
+      } else if (stopIndex != null) {
+        _stopControllers[stopIndex].text = picked!.address;
+        _stopPoints[stopIndex] = picked.point;
       } else {
-        _destinationController.text = picked.address;
+        _destinationController.text = picked!.address;
         _destinationPoint = picked.point;
       }
     });
@@ -119,7 +186,13 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
       _routing = true;
     });
 
-    final result = await ref.read(routeServiceProvider).fetchRoute(pickup, destination);
+    final waypoints = [
+      pickup,
+      ..._stopPoints.where((p) => p != null).cast<LatLng>(),
+      destination,
+    ];
+
+    final result = await ref.read(routeServiceProvider).fetchRouteWaypoints(waypoints);
     if (!mounted || token != _routeToken) return;
     setState(() {
       _route = result;
@@ -140,9 +213,11 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
           vehicle: _vehicle!,
           pickupAddress: _pickupController.text,
           destinationAddress: _destinationController.text,
+          stops: _stopControllers.map((c) => c.text).where((t) => t.isNotEmpty).toList(),
           distanceKm: _distanceKm,
           fare: fare,
           paymentMethod: _paymentMethod,
+          scheduledFor: _scheduledFor,
         ),
       ),
     );
@@ -168,30 +243,68 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  const RidersNearYouMap(),
+                  const SizedBox(height: 16),
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         children: [
-                          _locationField(
+                          LocationPickerField(
                             controller: _pickupController,
                             hint: 'Tap to set pickup on the map',
-                            icon: Icons.circle,
-                            iconColor: AppColors.success,
-                            iconSize: 12,
-                            emptyError: 'Set a pickup location',
                             isPickup: true,
+                            emptyError: 'Set a pickup location',
+                            onTap: () => _pickLocation(isPickup: true),
                           ),
                           const SizedBox(height: 14),
-                          _locationField(
+                          for (int i = 0; i < _stopControllers.length; i++) ...[
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: LocationPickerField(
+                                    controller: _stopControllers[i],
+                                    hint: 'Tap to set stop ${i + 1}',
+                                    isPickup: false,
+                                    emptyError: 'Set stop location',
+                                    onTap: () => _pickLocation(isPickup: false, stopIndex: i),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.remove_circle_outline, color: AppColors.danger),
+                                  onPressed: () {
+                                    setState(() {
+                                      _stopControllers[i].dispose();
+                                      _stopControllers.removeAt(i);
+                                      _stopPoints.removeAt(i);
+                                    });
+                                    _refreshRoute();
+                                  },
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                          ],
+                          LocationPickerField(
                             controller: _destinationController,
                             hint: 'Tap to set destination on the map',
-                            icon: Icons.location_on_outlined,
-                            iconColor: AppColors.danger,
-                            iconSize: 20,
-                            emptyError: 'Set a destination',
                             isPickup: false,
+                            emptyError: 'Set a destination',
+                            onTap: () => _pickLocation(isPickup: false),
                           ),
+                          if (_stopControllers.length < _maxStops) ...[
+                            const SizedBox(height: 8),
+                            TextButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _stopControllers.add(TextEditingController());
+                                  _stopPoints.add(null);
+                                });
+                              },
+                              icon: const Icon(Icons.add),
+                              label: const Text('Add Stop'),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -219,6 +332,37 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
                             ))
                         .toList(),
                     onChanged: (v) => setState(() => _vehicle = v),
+                  ),
+                  const SizedBox(height: 16),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.schedule_rounded),
+                      title: Text(_scheduledFor == null ? 'Schedule for later (Optional)' : 'Scheduled for ${Formatters.date(_scheduledFor!)}'),
+                      trailing: _scheduledFor == null
+                          ? const Icon(Icons.chevron_right_rounded)
+                          : IconButton(
+                              icon: const Icon(Icons.close_rounded),
+                              onPressed: () => setState(() => _scheduledFor = null),
+                            ),
+                      onTap: () async {
+                        final date = await showDatePicker(
+                          context: context,
+                          initialDate: DateTime.now(),
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime.now().add(const Duration(days: 7)),
+                        );
+                        if (date == null) return;
+                        if (!mounted) return;
+                        final time = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.now(),
+                        );
+                        if (time == null) return;
+                        setState(() {
+                          _scheduledFor = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+                        });
+                      },
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Card(
@@ -265,38 +409,12 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
     );
   }
 
-  /// Read-only field that opens the map picker on tap.
-  ///
-  /// Still a [TextFormField] so the existing form validation, controller, and
-  /// error display keep working — only typing is replaced by the picker.
-  Widget _locationField({
-    required TextEditingController controller,
-    required String hint,
-    required IconData icon,
-    required Color iconColor,
-    required double iconSize,
-    required String emptyError,
-    required bool isPickup,
-  }) {
-    return TextFormField(
-      controller: controller,
-      readOnly: true,
-      maxLines: 2,
-      minLines: 1,
-      autovalidateMode: AutovalidateMode.onUserInteraction,
-      onTap: () => _pickLocation(isPickup: isPickup),
-      decoration: InputDecoration(
-        hintText: hint,
-        prefixIcon: Icon(icon, color: iconColor, size: iconSize),
-        suffixIcon: Icon(Icons.map_outlined, size: 20, color: AppColors.iconMuted),
-      ),
-      validator: (v) => v == null || v.trim().isEmpty ? emptyError : null,
-    );
-  }
-
   Widget _fareBox() {
     final km = _distanceKm;
     final fare = _fare;
+
+    final baseFare = _vehicle?.baseFare ?? 0.0;
+    final distanceFare = (fare != null) ? fare - baseFare : null;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -331,7 +449,27 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          if (fare != null) ...[
+            const SizedBox(height: 12),
+            Container(height: 1, color: AppColors.cardBorder),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Base Fare', style: AppTypography.caption.copyWith(color: AppColors.neutral500)),
+                Text(Formatters.currency(baseFare), style: AppTypography.caption.copyWith(color: AppColors.neutral700)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Distance Charge', style: AppTypography.caption.copyWith(color: AppColors.neutral500)),
+                Text(Formatters.currency(distanceFare!), style: AppTypography.caption.copyWith(color: AppColors.neutral700)),
+              ],
+            ),
+          ],
+          const SizedBox(height: 12),
           Row(
             children: [
               Icon(_sourceIcon, size: 13, color: AppColors.neutral500),

@@ -49,4 +49,20 @@
     }
     return null;
   }
+
+  /// Rejects a past date/time. Every booking this app creates is stamped
+  /// server-side with `now()` at insert, so it can never itself be in the
+  /// past — this exists for any UI that lets someone pick a date/time (e.g.
+  /// a future "schedule for later" booking flow) so it can enforce the same
+  /// rule client-side before it ever reaches the server.
+  static String? futureDateTime(DateTime? value) {
+    if (value == null) return 'Please select a valid future date and time.';
+    // A minute of slack: the moment the user taps "now" shouldn't itself
+    // read as "past" by the time the check runs.
+    final cutoff = DateTime.now().subtract(const Duration(minutes: 1));
+    if (value.isBefore(cutoff)) {
+      return 'Please select a valid future date and time.';
+    }
+    return null;
+  }
 }

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/supabase/supabase_client.dart';
+import '../../../core/utils/app_log.dart';
 import '../../../shared/models/profile_model.dart';
 import '../../../shared/models/rider_application_model.dart';
 import '../../../shared/models/vehicle_model.dart';
@@ -99,8 +100,9 @@ class AuthRepository {
         await _supabase.from('profiles').update({
           'phone': phone.trim(),
         }).eq('id', user.id);
-      } catch (_) {
-        // Fallback if trigger hasn't finished immediately
+      } catch (e, s) {
+        // The handle_new_user trigger may not have created the profile row yet.
+        AppLog.warn('signUp: phone update retrying after trigger delay', e, s);
         await Future.delayed(const Duration(milliseconds: 600));
         await _supabase.from('profiles').update({
           'phone': phone.trim(),
@@ -190,6 +192,13 @@ class AuthRepository {
       throw const AuthException('The system admin account cannot be reset via email.');
     }
     await _supabase.auth.resetPasswordForEmail(email);
+  }
+
+  Future<bool> checkEmailExists(String email) async {
+    final response = await _supabase.rpc('check_email_exists', params: {
+      'lookup_email': email.trim().toLowerCase(),
+    });
+    return response as bool? ?? false;
   }
 
   Future<void> signOut() async {

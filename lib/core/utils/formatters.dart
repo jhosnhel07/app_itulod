@@ -24,6 +24,13 @@ class Formatters {
     return DateFormat('MMM d, yyyy').format(dateTime.toLocal());
   }
 
+  /// Time only, in the device's local timezone — e.g. "10:15 AM". Used for
+  /// showing a booking's auto-expiration cutoff.
+  static String timeOnly(DateTime? dateTime) {
+    if (dateTime == null) return '—';
+    return DateFormat('h:mm a').format(dateTime.toLocal());
+  }
+
   static String distance(num? distanceKm) {
     if (distanceKm == null) return '—';
     final value = distanceKm is double

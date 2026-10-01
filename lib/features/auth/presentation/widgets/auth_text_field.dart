@@ -15,6 +15,7 @@ class AuthTextField extends StatelessWidget {
   final FormFieldValidator<String>? validator;
   final ValueChanged<String>? onChanged;
   final bool showPasswordToggle;
+  final double bottomPadding;
 
   const AuthTextField({
     super.key,
@@ -29,12 +30,13 @@ class AuthTextField extends StatelessWidget {
     this.validator,
     this.onChanged,
     this.showPasswordToggle = false,
+    this.bottomPadding = 18,
   });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
+      padding: EdgeInsets.only(bottom: bottomPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

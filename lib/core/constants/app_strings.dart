@@ -68,4 +68,14 @@
   static const String pendingReviewTitle = 'Application Under Review';
   static const String pendingReviewDesc = 'Your rider application has been submitted and is currently under administrative review. We will notify you once approved.';
   static const String rejectedTitle = 'Application Needs Attention';
+
+  // Booking date/time & expiration
+  static const String pastDateTimeError =
+      'Please select a valid future date and time.';
+  static const String bookingExpiredMessage =
+      'This booking has expired because the scheduled date and time has already passed.';
+  static const String gracePeriodNote =
+      'You have a 15-minute grace period after your scheduled booking time.';
+  static const String pendingGracePeriodNote =
+      "This request expires automatically if no rider accepts it within 15 minutes.";
 }

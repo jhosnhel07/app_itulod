@@ -39,11 +39,18 @@ BookingKind bookingKindFromTable(String table) {
 
 /// Common fields shared by all booking tables.
 class BookingBase {
+  /// How long a booking has to be accepted (from [createdAt]) or completed
+  /// (from [acceptedAt]) before the server auto-expires it. Mirrors the
+  /// `expire_stale_bookings()` grace period in migration 010b — keep both in
+  /// sync if this ever changes.
+  static const int gracePeriodMinutes = 15;
+
   final String id;
   final BookingKind kind;
   final String customerId;
   final String? riderId;
-  final String status; // pending | accepted | ongoing | completed | cancelled
+  // pending | accepted | ongoing | completed | cancelled | expired | no_show
+  final String status;
   final double? estimatedFare;
   final double? finalFare;
   final String? paymentMethod; // cash | gcash | card
@@ -52,6 +59,14 @@ class BookingBase {
   final String? review;
   final String? cancelledReason;
   final DateTime createdAt;
+  /// The moment a rider was confirmed onto this booking — the anchor for the
+  /// post-acceptance grace period. Null until a rider accepts.
+  final DateTime? acceptedAt;
+
+  final double? tipAmount;
+  final double? cancellationFee;
+  final DateTime? scheduledFor;
+  final String? promoCode;
 
   const BookingBase({
     required this.id,
@@ -67,19 +82,56 @@ class BookingBase {
     this.review,
     this.cancelledReason,
     required this.createdAt,
+    this.acceptedAt,
+    this.tipAmount,
+    this.cancellationFee,
+    this.scheduledFor,
+    this.promoCode,
   });
 
   bool get isActive => status == 'pending' || status == 'accepted' || status == 'ongoing';
   bool get canCancel => status == 'pending' || status == 'accepted';
   bool get canRate => status == 'completed' && rating == null;
+  bool get isExpired => status == 'expired';
+  bool get isNoShow => status == 'no_show';
+
+  /// A booking that can no longer be edited, confirmed, or acted on by
+  /// anyone but the system/admin.
+  bool get isTerminal =>
+      status == 'completed' ||
+      status == 'cancelled' ||
+      status == 'expired' ||
+      status == 'no_show';
+
   bool get needsPayment =>
       kind == BookingKind.transport &&
       paymentMethod != null &&
       paymentMethod != 'cash' &&
       (paymentStatus == 'pending' || paymentStatus == 'failed') &&
-      status != 'cancelled';
+      status != 'cancelled' &&
+      status != 'expired';
 
-  String get displayFare => Formatters.currency(finalFare ?? estimatedFare);
+  /// When this booking is due to auto-expire under the 15-minute grace
+  /// period, or null once it's moved past the pending/accepted stages.
+  DateTime? get expiresAt {
+    if (status == 'pending') {
+      return createdAt.add(const Duration(minutes: gracePeriodMinutes));
+    }
+    if (status == 'accepted' && acceptedAt != null) {
+      return acceptedAt!.add(const Duration(minutes: gracePeriodMinutes));
+    }
+    return null;
+  }
+
+  String get displayFare {
+    if (kind == BookingKind.food) {
+      final b = this as FoodDeliveryModel;
+      final foodTotal = b.actualFoodCost ?? b.totalItemsPrice ?? 0.0;
+      final deliveryFee = finalFare ?? estimatedFare ?? 0.0;
+      return Formatters.currency(foodTotal + deliveryFee);
+    }
+    return Formatters.currency(finalFare ?? estimatedFare);
+  }
 
   String get routeLine {
     switch (kind) {
@@ -108,8 +160,16 @@ class BookingBase {
         'review': review,
         'cancelled_reason': cancelledReason,
         'created_at': createdAt.toIso8601String(),
+        'accepted_at': acceptedAt?.toIso8601String(),
+        'tip_amount': tipAmount,
+        'cancellation_fee': cancellationFee,
+        'scheduled_for': scheduledFor?.toIso8601String(),
+        'promo_code': promoCode,
       };
 }
+
+DateTime? _parseTimestamp(Object? value) =>
+    value == null ? null : DateTime.tryParse(value as String);
 
 class TransportBookingModel extends BookingBase {
   final String vehicleId;
@@ -134,6 +194,11 @@ class TransportBookingModel extends BookingBase {
     super.review,
     super.cancelledReason,
     required super.createdAt,
+    super.acceptedAt,
+    super.tipAmount,
+    super.cancellationFee,
+    super.scheduledFor,
+    super.promoCode,
   }) : super(kind: BookingKind.transport);
 
   factory TransportBookingModel.fromJson(Map<String, dynamic> json) {
@@ -154,6 +219,11 @@ class TransportBookingModel extends BookingBase {
       review: json['review'] as String?,
       cancelledReason: json['cancelled_reason'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
+      acceptedAt: _parseTimestamp(json['accepted_at']),
+      tipAmount: (json['tip_amount'] as num?)?.toDouble(),
+      cancellationFee: (json['cancellation_fee'] as num?)?.toDouble(),
+      scheduledFor: _parseTimestamp(json['scheduled_for']),
+      promoCode: json['promo_code'] as String?,
     );
   }
 }
@@ -165,6 +235,11 @@ class FoodDeliveryModel extends BookingBase {
   final String instructions;
   final String vehicleId;
   final double? distanceKm;
+  final String? restaurantId;
+  final List<dynamic>? items;
+  final double? totalItemsPrice;
+  final double? actualFoodCost;
+  final String? receiptPhotoUrl;
 
   const FoodDeliveryModel({
     required super.id,
@@ -175,6 +250,11 @@ class FoodDeliveryModel extends BookingBase {
     this.instructions = '',
     required this.vehicleId,
     this.distanceKm,
+    this.restaurantId,
+    this.items,
+    this.totalItemsPrice,
+    this.actualFoodCost,
+    this.receiptPhotoUrl,
     super.riderId,
     required super.status,
     super.estimatedFare,
@@ -184,6 +264,11 @@ class FoodDeliveryModel extends BookingBase {
     super.review,
     super.cancelledReason,
     required super.createdAt,
+    super.acceptedAt,
+    super.tipAmount,
+    super.cancellationFee,
+    super.scheduledFor,
+    super.promoCode,
   }) : super(kind: BookingKind.food);
 
   factory FoodDeliveryModel.fromJson(Map<String, dynamic> json) {
@@ -196,6 +281,11 @@ class FoodDeliveryModel extends BookingBase {
       instructions: json['instructions'] as String? ?? '',
       vehicleId: json['vehicle_id'] as String? ?? '',
       distanceKm: (json['distance_km'] as num?)?.toDouble(),
+      restaurantId: json['restaurant_id'] as String?,
+      items: json['items'] as List<dynamic>?,
+      totalItemsPrice: (json['total_items_price'] as num?)?.toDouble(),
+      actualFoodCost: (json['actual_food_cost'] as num?)?.toDouble(),
+      receiptPhotoUrl: json['receipt_photo_url'] as String?,
       riderId: json['rider_id'] as String?,
       status: json['status'] as String? ?? 'pending',
       estimatedFare: (json['estimated_fare'] as num?)?.toDouble(),
@@ -205,6 +295,11 @@ class FoodDeliveryModel extends BookingBase {
       review: json['review'] as String?,
       cancelledReason: json['cancelled_reason'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
+      acceptedAt: _parseTimestamp(json['accepted_at']),
+      tipAmount: (json['tip_amount'] as num?)?.toDouble(),
+      cancellationFee: (json['cancellation_fee'] as num?)?.toDouble(),
+      scheduledFor: _parseTimestamp(json['scheduled_for']),
+      promoCode: json['promo_code'] as String?,
     );
   }
 }
@@ -221,6 +316,8 @@ class ParcelDeliveryModel extends BookingBase {
   final String parcelDescription;
   final String instructions;
   final String vehicleId;
+  final bool isRoundTrip;
+  final double codAmount;
 
   const ParcelDeliveryModel({
     required super.id,
@@ -236,6 +333,8 @@ class ParcelDeliveryModel extends BookingBase {
     this.parcelDescription = '',
     this.instructions = '',
     required this.vehicleId,
+    this.isRoundTrip = false,
+    this.codAmount = 0.0,
     super.riderId,
     required super.status,
     super.estimatedFare,
@@ -245,6 +344,11 @@ class ParcelDeliveryModel extends BookingBase {
     super.review,
     super.cancelledReason,
     required super.createdAt,
+    super.acceptedAt,
+    super.tipAmount,
+    super.cancellationFee,
+    super.scheduledFor,
+    super.promoCode,
   }) : super(kind: BookingKind.parcel);
 
   factory ParcelDeliveryModel.fromJson(Map<String, dynamic> json) {
@@ -262,6 +366,8 @@ class ParcelDeliveryModel extends BookingBase {
       parcelDescription: json['parcel_description'] as String? ?? '',
       instructions: json['instructions'] as String? ?? '',
       vehicleId: json['vehicle_id'] as String? ?? '',
+      isRoundTrip: json['is_round_trip'] as bool? ?? false,
+      codAmount: (json['cod_amount'] as num?)?.toDouble() ?? 0.0,
       riderId: json['rider_id'] as String?,
       status: json['status'] as String? ?? 'pending',
       estimatedFare: (json['estimated_fare'] as num?)?.toDouble(),
@@ -271,6 +377,11 @@ class ParcelDeliveryModel extends BookingBase {
       review: json['review'] as String?,
       cancelledReason: json['cancelled_reason'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
+      acceptedAt: _parseTimestamp(json['accepted_at']),
+      tipAmount: (json['tip_amount'] as num?)?.toDouble(),
+      cancellationFee: (json['cancellation_fee'] as num?)?.toDouble(),
+      scheduledFor: _parseTimestamp(json['scheduled_for']),
+      promoCode: json['promo_code'] as String?,
     );
   }
 }

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/admin/presentation/screens/admin_dashboard_screen.dart';
@@ -7,6 +7,9 @@ import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/register_screen.dart';
 import '../../features/auth/presentation/screens/rider_under_review_screen.dart';
 import '../../features/customer/presentation/screens/customer_dashboard_screen.dart';
+import '../../features/customer/presentation/screens/saved_addresses_screen.dart';
+import '../../features/customer/presentation/screens/wallet_screen.dart';
+import '../../features/promos/presentation/screens/referrals_screen.dart';
 import '../../features/rider/presentation/screens/rider_dashboard_screen.dart';
 import '../../shared/models/profile_model.dart';
 import '../../shared/models/rider_application_model.dart';
@@ -107,6 +110,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/admin/dashboard',
         builder: (context, state) => const AdminDashboardScreen(),
+      ),
+      GoRoute(
+        path: '/customer/wallet',
+        builder: (context, state) => const WalletScreen(),
+      ),
+      GoRoute(
+        path: '/customer/saved-addresses',
+        builder: (context, state) => const SavedAddressesScreen(),
+      ),
+      GoRoute(
+        path: '/customer/referrals',
+        builder: (context, state) => const ReferralsScreen(),
       ),
     ],
   );

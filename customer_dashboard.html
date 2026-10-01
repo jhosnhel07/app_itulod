@@ -1,0 +1,1314 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Customer Dashboard — iTULOD</title>
+    <meta
+      name="description"
+      content="Book rides, food delivery, and parcel delivery with iTULOD."
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    />
+    <link rel="stylesheet" href="../css/main.css" />
+    <link rel="stylesheet" href="../css/dashboard.css" />
+    <!-- Mapbox GL JS + CSS are injected on demand by js/map.js (loadMapbox) -->
+    <link rel="manifest" href="../manifest.webmanifest" />
+    <meta name="theme-color" content="#2196F3" />
+    <link rel="icon" href="../assets/favicon-32.png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png" />
+  </head>
+  <body>
+    <div class="app-shell app-shell--tabbed">
+      <!-- =================== SIDEBAR =================== -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <a href="../index.html" class="brand"
+            >iTULOD<span class="dot">.</span></a
+          >
+        </div>
+
+        <nav class="side-nav">
+          <button class="side-link active" data-tab="home">
+            <i class="fa-solid fa-house"></i> Home
+          </button>
+
+          <span class="side-nav-label">Book</span>
+          <button class="side-link" data-tab="book">
+            <i class="fa-solid fa-plus"></i> New booking
+          </button>
+
+          <span class="side-nav-label">Activity</span>
+          <button class="side-link" data-tab="history">
+            <i class="fa-solid fa-clock-rotate-left"></i> Booking history
+          </button>
+          <button class="side-link" data-tab="notifications">
+            <i class="fa-solid fa-bell"></i> Notifications
+            <span
+              id="notif-count"
+              class="badge badge--danger js-notif-count"
+              style="display: none; margin-left: auto"
+            ></span>
+          </button>
+
+          <span class="side-nav-label">Account</span>
+          <button class="side-link" data-tab="profile">
+            <i class="fa-solid fa-user"></i> Profile
+          </button>
+        </nav>
+
+        <div class="side-foot">
+          <div class="user-chip">
+            <div
+              class="avatar"
+              id="side-avatar"
+              style="background: var(--rose-deep)"
+            >
+              ?
+            </div>
+            <div class="chip-text">
+              <strong id="side-name">Loading…</strong>
+              <span id="side-role">customer</span>
+            </div>
+            <span class="badge badge--role-customer" style="margin-left: auto"
+              >Customer</span
+            >
+          </div>
+          <button class="side-link logout-btn" onclick="logout()">
+            <i class="fa-solid fa-right-from-bracket"></i> Log out
+          </button>
+        </div>
+      </aside>
+
+      <!-- =================== MAIN =================== -->
+      <main class="main">
+        <div class="mobile-topbar">
+          <button class="menu-btn" onclick="toggleSidebar()" aria-label="Menu">
+            <i class="fa-solid fa-bars"></i>
+          </button>
+          <span class="brand" style="font-size: 1.1rem; color: var(--blue)">
+            iTULOD<span class="dot">.</span>
+          </span>
+          <button
+            class="topbar-action"
+            onclick="activateTab('notifications')"
+            aria-label="Notifications"
+          >
+            <i class="fa-solid fa-bell"></i>
+            <span
+              class="badge badge--danger js-notif-count"
+              style="display: none"
+            ></span>
+          </button>
+        </div>
+
+        <div class="page-head">
+          <div>
+            <h1 id="page-title">Home</h1>
+            <p id="page-sub">Your bookings at a glance.</p>
+          </div>
+        </div>
+
+        <!-- ===================== HOME ===================== -->
+        <section class="tab-panel active" id="tab-home">
+          <div id="home-active" class="home-active-slot"></div>
+
+          <div class="stat-grid">
+            <div class="stat-card">
+              <div class="top"><div class="icon icon--blue"><i class="fa-solid fa-route"></i></div></div>
+              <strong id="home-stat-trips">—</strong>
+              <span class="label">Completed trips</span>
+            </div>
+            <div class="stat-card">
+              <div class="top"><div class="icon icon--green"><i class="fa-solid fa-peso-sign"></i></div></div>
+              <strong id="home-stat-spent">₱0.00</strong>
+              <span class="label">Total spent</span>
+            </div>
+            <div class="stat-card">
+              <div class="top"><div class="icon icon--orange"><i class="fa-solid fa-calendar-day"></i></div></div>
+              <strong id="home-stat-month">—</strong>
+              <span class="label">Trips this month</span>
+            </div>
+          </div>
+
+          <div class="card card--flush">
+            <div class="card-head">
+              <h3>Recent activity</h3>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="activateTab('history')">
+                View all
+              </button>
+            </div>
+            <div id="home-recent"></div>
+          </div>
+        </section>
+
+        <!-- ===================== NEW BOOKING ===================== -->
+        <section class="tab-panel" id="tab-book">
+          <div class="segmented" id="booking-switch" role="tablist">
+            <button type="button" class="seg-btn active" data-service="ride">
+              <i class="fa-solid fa-car"></i> Ride
+            </button>
+            <button type="button" class="seg-btn" data-service="food">
+              <i class="fa-solid fa-utensils"></i> Food
+            </button>
+            <button type="button" class="seg-btn" data-service="parcel">
+              <i class="fa-solid fa-box"></i> Parcel
+            </button>
+          </div>
+
+          <div class="booking-view active" id="view-ride">
+          <div class="grid-2 grid-2--aside">
+            <!-- Form -->
+            <div class="card">
+              <div class="card-head"><h3>Trip details</h3></div>
+              <form id="ride-form">
+                <div class="field">
+                  <label>Pickup location</label>
+                  <div class="input-map">
+                    <input
+                      type="text"
+                      id="ride-pickup"
+                      placeholder="e.g. Laoag City Hall, Laoag"
+                      required
+                    />
+                    <button
+                      type="button"
+                      class="saved-addr-btn"
+                      onclick="toggleSavedAddressPicker(this, 'ride-pickup')"
+                      aria-label="Use a saved address"
+                      title="Saved addresses"
+                    >
+                      <i class="fa-solid fa-bookmark"></i>
+                    </button>
+                    <button
+                      type="button"
+                      class="map-pin-btn"
+                      onclick="pinOnMap('ride', 'pickup')"
+                      aria-label="Set pickup on map"
+                      title="Set on map"
+                    >
+                      <i class="fa-solid fa-map-location-dot"></i>
+                    </button>
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Destination</label>
+                  <div class="input-map">
+                    <input
+                      type="text"
+                      id="ride-destination"
+                      placeholder="e.g. Batac Public Market, Batac"
+                      required
+                    />
+                    <button
+                      type="button"
+                      class="saved-addr-btn"
+                      onclick="toggleSavedAddressPicker(this, 'ride-destination')"
+                      aria-label="Use a saved address"
+                      title="Saved addresses"
+                    >
+                      <i class="fa-solid fa-bookmark"></i>
+                    </button>
+                    <button
+                      type="button"
+                      class="map-pin-btn"
+                      onclick="pinOnMap('ride', 'dropoff')"
+                      aria-label="Set destination on map"
+                      title="Set on map"
+                    >
+                      <i class="fa-solid fa-map-location-dot"></i>
+                    </button>
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Stops (optional, between pickup and destination)</label>
+                  <div id="ride-stops-container"></div>
+                  <button
+                    type="button"
+                    class="btn btn-outline btn-sm"
+                    id="ride-add-stop-btn"
+                  >
+                    <i class="fa-solid fa-plus"></i> Add a stop
+                  </button>
+                </div>
+
+                <div class="field">
+                  <label>Vehicle type</label>
+                  <select id="ride-vehicle" required></select>
+                </div>
+
+                <div class="field">
+                  <label>Promo code (optional)</label>
+                  <input type="text" id="ride-promo" placeholder="e.g. WELCOME10" style="text-transform:uppercase" />
+                </div>
+
+                <div class="field">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer">
+                    <input type="checkbox" id="ride-schedule-toggle" style="width: auto" />
+                    Schedule for later instead of now
+                  </label>
+                </div>
+                <div class="field" id="ride-schedule-field" style="display: none">
+                  <label>Pickup date &amp; time</label>
+                  <input type="datetime-local" id="ride-schedule-time" />
+                </div>
+
+                <!-- Fare estimate card with blue left-border accent -->
+                <div class="fare-estimate-card">
+                  <div class="fare-row">
+                    <span>Estimated distance</span>
+                    <span id="ride-distance">—</span>
+                  </div>
+                  <div class="fare-row fare-row--total">
+                    <span>Estimated fare</span>
+                    <strong id="ride-fare">₱0.00</strong>
+                  </div>
+                  <div class="fare-row fare-row--breakdown">
+                    <small id="ride-fare-breakdown" class="fare-breakdown"></small>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label>Payment method</label>
+                  <select id="ride-payment">
+                    <option value="cash">Cash</option>
+                    <option value="gcash">GCash</option>
+                  </select>
+                  <p
+                    style="
+                      color: var(--text-muted);
+                      font-size: 0.8rem;
+                      margin: 6px 0 0;
+                    "
+                  >
+                    <i class="fa-solid fa-lock"></i> Your ride is booked
+                    first — you'll pay with GCash from Home or Booking
+                    history whenever you're ready.
+                  </p>
+                </div>
+                <button
+                  class="btn btn-primary btn-block"
+                  id="ride-submit"
+                  type="submit"
+                >
+                  <i class="fa-solid fa-check"></i> Confirm booking
+                </button>
+              </form>
+            </div>
+
+            <!-- Map + step indicator -->
+            <div class="card map-card map-card--picker" id="ride-map-card">
+              <div class="card-head">
+                <h3>Set location on map</h3>
+                <button
+                  type="button"
+                  class="map-sheet-close"
+                  onclick="closeMapSheet('ride')"
+                  aria-label="Close map"
+                >
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+
+              <!-- Step indicator -->
+              <div class="map-step-indicator">
+                <button
+                  type="button"
+                  class="map-step active"
+                  id="map-mode-pickup"
+                  onclick="setMapMode('pickup')"
+                >
+                  <span class="step-num">1</span>
+                  <span
+                    ><i class="fa-solid fa-location-dot"></i> Set Pickup</span
+                  >
+                </button>
+                <button
+                  type="button"
+                  class="map-step"
+                  id="map-mode-dropoff"
+                  onclick="setMapMode('dropoff')"
+                >
+                  <span class="step-num">2</span>
+                  <span
+                    ><i class="fa-solid fa-flag-checkered"></i> Set
+                    Drop-off</span
+                  >
+                </button>
+              </div>
+
+              <p
+                id="map-mode-hint"
+                style="
+                  font-size: 0.8rem;
+                  color: var(--text-muted);
+                  margin-bottom: 10px;
+                "
+              >
+                <i class="fa-solid fa-circle-info"></i> Click on the map to set
+                your pickup location.
+              </p>
+              <div id="tracking-map" class="map-canvas"></div>
+              <p id="nearby-riders-count" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 8px">
+                <i class="fa-solid fa-motorcycle"></i> Looking for nearby riders…
+              </p>
+              <div id="ride-active-status" style="margin-top: 16px"></div>
+              <button
+                type="button"
+                class="btn btn-primary btn-block map-sheet-done"
+                onclick="closeMapSheet('ride')"
+              >
+                <i class="fa-solid fa-check"></i> Done
+              </button>
+            </div>
+          </div>
+          </div><!-- /#view-ride -->
+
+          <!-- ===================== FOOD DELIVERY ===================== -->
+          <div class="booking-view" id="view-food">
+          <div class="grid-2 grid-2--aside">
+            <div class="card">
+              <div class="card-head"><h3>Food delivery request</h3></div>
+              <form id="food-form">
+                <div class="field" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                  <input type="checkbox" id="food-is-pabili" style="width: auto; height: 1.2rem; margin: 0;" />
+                  <label for="food-is-pabili" style="margin: 0; cursor: pointer;">Custom Store (Pabili)</label>
+                </div>
+
+                <div id="food-restaurant-picker-group">
+                  <div class="field">
+                    <label>Restaurant</label>
+                    <div id="food-restaurant-summary" class="card" style="padding: 12px; margin-bottom: 0">
+                      <p id="food-restaurant-empty-note" style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 8px">
+                        No restaurant chosen yet.
+                      </p>
+                      <p id="food-restaurant-name-display" style="font-weight: 600; margin-bottom: 8px; display: none"></p>
+                      <button type="button" class="btn btn-outline btn-sm" id="food-choose-restaurant-btn">
+                        <i class="fa-solid fa-store"></i> <span id="food-choose-btn-label">Choose a restaurant</span>
+                      </button>
+                    </div>
+                  </div>
+                  <input type="hidden" id="food-restaurant-id" />
+                  <div class="field" id="food-pickup-field" style="display: none">
+                    <label>Pickup location</label>
+                    <input type="text" id="food-pickup" readonly />
+                  </div>
+                  
+                  <div class="field" id="food-cart-field" style="display: none">
+                    <label>Your order</label>
+                    <div id="food-cart-list" class="card" style="padding: 12px; margin-bottom: 8px"></div>
+                    <button type="button" class="btn btn-outline btn-sm" id="food-edit-cart-btn">
+                      <i class="fa-solid fa-pen"></i> Edit items
+                    </button>
+                  </div>
+                </div>
+
+                <div id="food-pabili-group" style="display: none;">
+                  <div class="field">
+                    <label>Store Name</label>
+                    <input type="text" id="food-pabili-store" placeholder="e.g. Jollibee, Mercury Drug" />
+                  </div>
+                  <div class="field">
+                    <label>Store Address</label>
+                    <div class="input-map">
+                      <input type="text" id="food-pabili-address" placeholder="e.g. Laoag City" />
+                      <button type="button" class="map-pin-btn" onclick="pinOnMap('food', 'pabili-address')" aria-label="Set store address on map" title="Set on map">
+                        <i class="fa-solid fa-map-location-dot"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label>Delivery address</label>
+                  <div class="input-map">
+                    <input
+                      type="text"
+                      id="food-address"
+                      required
+                      placeholder="e.g. Brgy. 1, Sarrat, Ilocos Norte"
+                    />
+                    <button
+                      type="button"
+                      class="saved-addr-btn"
+                      onclick="toggleSavedAddressPicker(this, 'food-address')"
+                      aria-label="Use a saved address"
+                      title="Saved addresses"
+                    >
+                      <i class="fa-solid fa-bookmark"></i>
+                    </button>
+                    <button
+                      type="button"
+                      class="map-pin-btn"
+                      onclick="pinOnMap('food', 'dropoff')"
+                      aria-label="Set delivery address on map"
+                      title="Set on map"
+                    >
+                      <i class="fa-solid fa-map-location-dot"></i>
+                    </button>
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Delivery instructions</label>
+                  <textarea
+                    id="food-instructions"
+                    rows="3"
+                    placeholder="e.g. Leave at the gate, call upon arrival"
+                  ></textarea>
+                </div>
+                <div class="field">
+                  <label>Vehicle type</label>
+                  <select id="food-vehicle" required></select>
+                </div>
+
+
+                <div class="fare-estimate-card">
+                  <div class="fare-row">
+                    <span>Item subtotal</span>
+                    <span id="food-item-subtotal">₱0.00</span>
+                  </div>
+                  <div class="fare-row">
+                    <span>Delivery fee (<span id="food-distance">—</span>)</span>
+                    <span id="food-delivery-fee">₱0.00</span>
+                  </div>
+                  <div class="fare-row fare-row--total">
+                    <span>Estimated total</span>
+                    <strong id="food-fare">₱0.00</strong>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label>Payment method</label>
+                  <select id="food-payment">
+                    <option value="cash">Cash on delivery</option>
+                    <option value="gcash">GCash</option>
+                  </select>
+                  <p style="color: var(--text-muted); font-size: 0.8rem; margin: 6px 0 0">
+                    <i class="fa-solid fa-lock"></i> The price above is what
+                    the rider will confirm at pickup. If you chose GCash,
+                    you'll pay once they do.
+                  </p>
+                </div>
+
+                <button
+                  class="btn btn-primary btn-block"
+                  id="food-submit"
+                  type="submit"
+                >
+                  <i class="fa-solid fa-check"></i> Request delivery
+                </button>
+              </form>
+            </div>
+
+            <div class="card map-card map-card--picker" id="food-map-card">
+              <div class="card-head">
+                <h3>Set location on map</h3>
+                <button
+                  type="button"
+                  class="map-sheet-close"
+                  onclick="closeMapSheet('food')"
+                  aria-label="Close map"
+                >
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+              <!-- Pickup is auto-set from the chosen restaurant now (see
+                   js/customer.js updateFoodRestaurantSummary) — this map is
+                   only ever used to set the delivery address. -->
+              <p
+                id="food-map-mode-hint"
+                style="
+                  font-size: 0.8rem;
+                  color: var(--text-muted);
+                  margin-bottom: 10px;
+                "
+              >
+                <i class="fa-solid fa-circle-info"></i> Click on the map to set
+                your delivery address.
+              </p>
+              <div id="food-map" class="map-canvas"></div>
+              <button
+                type="button"
+                class="btn btn-primary btn-block map-sheet-done"
+                onclick="closeMapSheet('food')"
+              >
+                <i class="fa-solid fa-check"></i> Done
+              </button>
+            </div>
+          </div>
+          </div><!-- /#view-food -->
+
+          <!-- ===================== PARCEL DELIVERY ===================== -->
+          <div class="booking-view" id="view-parcel">
+          <div class="grid-2 grid-2--aside">
+            <div class="card">
+              <div class="card-head"><h3>Parcel delivery request</h3></div>
+              <form id="parcel-form">
+                <div class="field-group">
+                  <div class="field-group__title"><i class="fa-solid fa-user"></i> Sender</div>
+                  <div class="field-row">
+                    <div class="field">
+                      <label>Sender name</label>
+                      <input type="text" id="parcel-sender-name" required />
+                    </div>
+                    <div class="field">
+                      <label>Sender phone</label>
+                      <input type="tel" id="parcel-sender-phone" inputmode="numeric" maxlength="13" placeholder="09XX XXX XXXX" />
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label>Sender address (pickup)</label>
+                    <div class="input-map">
+                      <input
+                        type="text"
+                        id="parcel-sender-address"
+                        required
+                        placeholder="e.g. Brgy. San Lorenzo, Laoag City"
+                      />
+                      <button
+                        type="button"
+                        class="saved-addr-btn"
+                        onclick="toggleSavedAddressPicker(this, 'parcel-sender-address')"
+                        aria-label="Use a saved address"
+                        title="Saved addresses"
+                      >
+                        <i class="fa-solid fa-bookmark"></i>
+                      </button>
+                      <button
+                        type="button"
+                        class="map-pin-btn"
+                        onclick="pinOnMap('parcel', 'pickup')"
+                        aria-label="Set sender address on map"
+                        title="Set on map"
+                      >
+                        <i class="fa-solid fa-map-location-dot"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="field-group">
+                  <div class="field-group__title"><i class="fa-solid fa-user-check"></i> Receiver</div>
+                  <div class="field-row">
+                    <div class="field">
+                      <label>Receiver name</label>
+                      <input type="text" id="parcel-receiver-name" required />
+                    </div>
+                    <div class="field">
+                      <label>Receiver phone</label>
+                      <input type="tel" id="parcel-receiver-phone" inputmode="numeric" maxlength="13" placeholder="09XX XXX XXXX" />
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label>Receiver address (drop-off)</label>
+                    <div class="input-map">
+                      <input
+                        type="text"
+                        id="parcel-receiver-address"
+                        required
+                        placeholder="e.g. Brgy. Poblacion, Pagudpud, Ilocos Norte"
+                      />
+                      <button
+                        type="button"
+                        class="saved-addr-btn"
+                        onclick="toggleSavedAddressPicker(this, 'parcel-receiver-address')"
+                        aria-label="Use a saved address"
+                        title="Saved addresses"
+                      >
+                        <i class="fa-solid fa-bookmark"></i>
+                      </button>
+                      <button
+                        type="button"
+                        class="map-pin-btn"
+                        onclick="pinOnMap('parcel', 'dropoff')"
+                        aria-label="Set receiver address on map"
+                        title="Set on map"
+                      >
+                        <i class="fa-solid fa-map-location-dot"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="field-group">
+                  <div class="field-group__title"><i class="fa-solid fa-box-open"></i> Parcel</div>
+                <!-- Parcel size radio cards -->
+                <div class="field">
+                  <label>Parcel size</label>
+                  <div class="size-chip-row">
+                    <div class="size-chip">
+                      <input
+                        type="radio"
+                        name="parcel-size"
+                        id="size-small"
+                        value="Small (fits a shoebox)"
+                        checked
+                      />
+                      <label for="size-small">
+                        <i class="fa-solid fa-cube"></i>
+                        Small
+                        <small>Fits a shoebox</small>
+                      </label>
+                    </div>
+                    <div class="size-chip">
+                      <input
+                        type="radio"
+                        name="parcel-size"
+                        id="size-medium"
+                        value="Medium (fits a backpack)"
+                      />
+                      <label for="size-medium">
+                        <i class="fa-solid fa-box"></i>
+                        Medium
+                        <small>Fits a backpack</small>
+                      </label>
+                    </div>
+                    <div class="size-chip">
+                      <input
+                        type="radio"
+                        name="parcel-size"
+                        id="size-large"
+                        value="Large (needs two hands)"
+                      />
+                      <label for="size-large">
+                        <i class="fa-solid fa-boxes-stacked"></i>
+                        Large
+                        <small>Needs two hands</small>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label>Parcel weight (kg)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    id="parcel-weight"
+                    placeholder="e.g. 2.5"
+                  />
+                </div>
+                <div class="field">
+                  <label>Parcel description</label>
+                  <input
+                    type="text"
+                    id="parcel-description"
+                    placeholder="e.g. Documents, clothes, electronics"
+                  />
+                </div>
+
+                <!-- Phase 4: Parcel Delivery Upgrades -->
+                <div class="field-row">
+                  <div class="field" style="display: flex; align-items: center; gap: 8px; margin-bottom: 0;">
+                    <input type="checkbox" id="parcel-is-round-trip" style="width: auto; height: 1.2rem; margin: 0;" />
+                    <label for="parcel-is-round-trip" style="margin: 0; cursor: pointer;">Round Trip (Wait & Return)</label>
+                  </div>
+                  <div class="field">
+                    <label>Collect COD from Receiver (â‚±)</label>
+                    <input type="number" id="parcel-cod-amount" placeholder="e.g. 500" min="0" step="50" />
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label>Delivery instructions</label>
+                  <textarea id="parcel-instructions" rows="2"></textarea>
+                </div>
+                
+                <div class="field" style="display: flex; align-items: center; gap: 8px;">
+                  <input type="checkbox" id="parcel-is-round-trip" />
+                  <label for="parcel-is-round-trip" style="margin: 0; font-weight: normal; cursor: pointer;">
+                    <strong>Round Trip</strong> (Rider will return to pickup address)
+                  </label>
+                </div>
+                
+                <div class="field">
+                  <label>Collect COD Amount (₱)</label>
+                  <input type="text" id="parcel-cod-amount" placeholder="e.g. 500.00" />
+                </div>
+                </div>
+
+                <div class="field">
+                  <label>Vehicle type</label>
+                  <select id="parcel-vehicle" required></select>
+                </div>
+
+
+                <div class="fare-estimate-card">
+                  <div class="fare-row">
+                    <span>Estimated distance</span>
+                    <span id="parcel-distance">—</span>
+                  </div>
+                  <div class="fare-row fare-row--total">
+                    <span>Estimated fare</span>
+                    <strong id="parcel-fare">₱0.00</strong>
+                  </div>
+                  <div class="fare-row fare-row--breakdown">
+                    <small id="parcel-fare-breakdown" class="fare-breakdown"></small>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label>Payment method</label>
+                  <select id="parcel-payment">
+                    <option value="cash">Cash on delivery</option>
+                    <option value="gcash">GCash</option>
+                  </select>
+                  <p style="color: var(--text-muted); font-size: 0.8rem; margin: 6px 0 0">
+                    <i class="fa-solid fa-lock"></i> The rider may adjust the
+                    final fare at pickup; you'll only be charged the confirmed
+                    amount.
+                  </p>
+                </div>
+
+                <button
+                  class="btn btn-primary btn-block"
+                  id="parcel-submit"
+                  type="submit"
+                >
+                  <i class="fa-solid fa-check"></i> Send parcel
+                </button>
+              </form>
+            </div>
+
+            <div class="card map-card map-card--picker" id="parcel-map-card">
+              <div class="card-head">
+                <h3>Set location on map</h3>
+                <button
+                  type="button"
+                  class="map-sheet-close"
+                  onclick="closeMapSheet('parcel')"
+                  aria-label="Close map"
+                >
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+              <div class="map-step-indicator">
+                <button
+                  type="button"
+                  class="map-step active"
+                  id="parcel-map-mode-pickup"
+                  onclick="setMapMode('pickup', 'parcel')"
+                >
+                  <span class="step-num">1</span>
+                  <span
+                    ><i class="fa-solid fa-location-dot"></i> Set Pickup</span
+                  >
+                </button>
+                <button
+                  type="button"
+                  class="map-step"
+                  id="parcel-map-mode-dropoff"
+                  onclick="setMapMode('dropoff', 'parcel')"
+                >
+                  <span class="step-num">2</span>
+                  <span
+                    ><i class="fa-solid fa-flag-checkered"></i> Set
+                    Drop-off</span
+                  >
+                </button>
+              </div>
+              <p
+                id="parcel-map-mode-hint"
+                style="
+                  font-size: 0.8rem;
+                  color: var(--text-muted);
+                  margin-bottom: 10px;
+                "
+              >
+                <i class="fa-solid fa-circle-info"></i> Click on the map to set
+                pickup location.
+              </p>
+              <div id="parcel-map" class="map-canvas"></div>
+              <button
+                type="button"
+                class="btn btn-primary btn-block map-sheet-done"
+                onclick="closeMapSheet('parcel')"
+              >
+                <i class="fa-solid fa-check"></i> Done
+              </button>
+            </div>
+          </div>
+          </div><!-- /#view-parcel -->
+        </section>
+
+        <!-- ===================== HISTORY ===================== -->
+        <section class="tab-panel" id="tab-history">
+          <div class="card card--flush">
+            <div class="tab-row" style="margin-bottom: 20px">
+              <button class="tab-btn active" data-history="transport">
+                <i class="fa-solid fa-car" style="margin-right: 6px"></i>Rides
+              </button>
+              <button class="tab-btn" data-history="food">
+                <i class="fa-solid fa-utensils" style="margin-right: 6px"></i
+                >Food
+              </button>
+              <button class="tab-btn" data-history="parcel">
+                <i class="fa-solid fa-box" style="margin-right: 6px"></i>Parcels
+              </button>
+            </div>
+            <div id="history-list"></div>
+            <div class="pagination" id="history-pagination"></div>
+          </div>
+        </section>
+
+        <!-- ===================== NOTIFICATIONS ===================== -->
+        <section class="tab-panel" id="tab-notifications">
+          <div class="card">
+            <div class="card-head">
+              <h3>Notifications</h3>
+              <span style="font-size: 0.8rem; color: var(--text-muted)"
+                >Most recent first</span
+              >
+            </div>
+            <div id="notif-list">
+              <div class="empty-state">
+                <i class="fa-regular fa-bell"></i>
+                <h4>No notifications yet</h4>
+                <p>You'll see booking updates and announcements here.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================== PROFILE ===================== -->
+        <section class="tab-panel" id="tab-profile">
+          <div class="card card--narrow">
+            <div class="card-head"><h3>Edit profile</h3></div>
+            <div class="avatar-upload">
+              <label
+                class="preview"
+                id="profile-avatar-preview"
+                for="profile-avatar-file"
+                tabindex="0"
+                aria-label="Change profile photo"
+                onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}"
+              >
+                ?
+                <div class="overlay"><i class="fa-solid fa-camera"></i></div>
+              </label>
+              <div class="upload-info">
+                <input
+                  type="file"
+                  id="profile-avatar-file"
+                  accept="image/*"
+                  hidden
+                />
+                <label for="profile-avatar-file" class="file-upload-btn">
+                  <i class="fa-solid fa-upload"></i> Choose photo
+                </label>
+                <span class="file-upload-name" id="profile-avatar-filename"
+                  >No file chosen</span
+                >
+                <small>JPG or PNG, up to 5MB. Square images look best.</small>
+              </div>
+            </div>
+
+            <form id="profile-form">
+              <div class="field">
+                <label>Full name</label>
+                <input type="text" id="profile-name" required />
+              </div>
+              <div class="field">
+                <label>Phone number</label>
+                <input type="tel" id="profile-phone" inputmode="numeric" maxlength="13" placeholder="09XX XXX XXXX" />
+              </div>
+              <div class="field" style="margin-bottom: 24px">
+                <label>Email</label>
+                <input type="email" id="profile-email" disabled />
+              </div>
+              <button
+                class="btn btn-primary"
+                id="profile-submit"
+                type="submit"
+                style="width: 100%"
+              >
+                <i class="fa-solid fa-floppy-disk"></i> Save changes
+              </button>
+            </form>
+          </div>
+
+          <div class="card card--narrow">
+            <div class="card-head"><h3>Change password</h3></div>
+            <form id="change-password-form">
+              <div class="field">
+                <label>New password</label>
+                <input
+                  type="password"
+                  id="new-password"
+                  minlength="8"
+                  required
+                  autocomplete="new-password"
+                  placeholder="At least 8 characters"
+                />
+              </div>
+              <div class="field" style="margin-bottom: 24px">
+                <label>Confirm new password</label>
+                <input
+                  type="password"
+                  id="confirm-password"
+                  minlength="8"
+                  required
+                  autocomplete="new-password"
+                  placeholder="Re-enter the password above"
+                />
+              </div>
+              <button
+                class="btn btn-outline"
+                id="change-password-submit"
+                type="submit"
+                style="width: 100%"
+              >
+                <i class="fa-solid fa-key"></i> Update password
+              </button>
+            </form>
+          </div>
+
+          <div class="card card--narrow">
+            <div class="card-head"><h3>My wallet</h3></div>
+            <p style="color: var(--text-muted); font-size: 0.82rem; margin: -6px 0 14px">
+              Top up with GCash once, then pay for rides instantly at checkout — no redirect.
+            </p>
+            <div style="text-align: center; margin-bottom: 16px">
+              <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 2px">Balance</p>
+              <div class="receipt-amount" id="wallet-balance">₱0.00</div>
+            </div>
+            <form id="wallet-topup-form" style="display: flex; gap: 8px; margin-bottom: 16px">
+              <input
+                type="number"
+                id="wallet-topup-amount"
+                min="1"
+                step="0.01"
+                placeholder="Amount"
+                required
+                style="flex: 1"
+              />
+              <button class="btn btn-primary btn-sm" id="wallet-topup-submit" type="submit">
+                <i class="fa-solid fa-mobile-screen-button"></i> Top up
+              </button>
+            </form>
+            <div id="wallet-txn-list"></div>
+          </div>
+
+          <div class="card card--narrow">
+            <div class="card-head"><h3>Refer a friend</h3></div>
+            <p style="color: var(--text-muted); font-size: 0.82rem; margin: -6px 0 14px">
+              Share your code — they get ₱50 in their wallet right away, and
+              you get ₱50 once their first booking is completed.
+            </p>
+            <div style="text-align: center; margin-bottom: 16px">
+              <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 2px">Your code</p>
+              <div class="receipt-amount" id="referral-code" style="letter-spacing: 2px">——————</div>
+            </div>
+            <button class="btn btn-outline btn-block" id="referral-copy-btn" style="margin-bottom: 16px">
+              <i class="fa-solid fa-copy"></i> Copy code
+            </button>
+            <form id="referral-redeem-form" style="display: none; gap: 8px" >
+              <div class="field" style="margin-bottom: 10px">
+                <label>Have a code? Redeem it</label>
+                <input type="text" id="referral-redeem-code" placeholder="e.g. AB12CD" style="text-transform: uppercase" required />
+              </div>
+              <button class="btn btn-primary btn-sm" id="referral-redeem-submit" type="submit" style="width: 100%">
+                <i class="fa-solid fa-gift"></i> Redeem
+              </button>
+            </form>
+            <p id="referral-redeemed-note" style="display: none; color: var(--text-muted); font-size: 0.82rem; text-align: center">
+              <i class="fa-solid fa-circle-check" style="color: var(--green)"></i> Referral applied — thanks!
+            </p>
+          </div>
+
+          <div class="card card--narrow">
+            <div class="card-head"><h3>Saved addresses</h3></div>
+            <p style="color: var(--text-muted); font-size: 0.82rem; margin: -6px 0 14px">
+              Save the places you book often — pick them from the
+              <i class="fa-solid fa-bookmark"></i> button next to any address
+              field.
+            </p>
+            <form id="saved-address-form" style="margin-bottom: 16px">
+              <div class="field">
+                <label>Label</label>
+                <input
+                  type="text"
+                  id="saved-address-label"
+                  placeholder="Home, Work, Mom's house…"
+                  maxlength="40"
+                  required
+                />
+              </div>
+              <div class="field" style="margin-bottom: 14px">
+                <label>Address</label>
+                <input
+                  type="text"
+                  id="saved-address-text"
+                  placeholder="e.g. Brgy. San Lorenzo, Laoag City"
+                  required
+                />
+              </div>
+              <button
+                class="btn btn-outline"
+                id="saved-address-submit"
+                type="submit"
+                style="width: 100%"
+              >
+                <i class="fa-solid fa-plus"></i> Save this address
+              </button>
+            </form>
+            <div id="saved-address-list"></div>
+          </div>
+
+          <div class="card card--narrow">
+            <div class="card-head"><h3>Need help?</h3></div>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 14px">
+              Something wrong with a booking, a payment, or anything else?
+            </p>
+            <button
+              class="btn btn-outline btn-block"
+              onclick="openSupportRequestModal()"
+            >
+              <i class="fa-solid fa-circle-question"></i> Report an issue
+            </button>
+          </div>
+
+          <!-- Shown only on phones, where the sidebar (and its log-out) is hidden -->
+          <div class="card card--narrow mobile-account">
+            <button class="btn btn-danger-ghost btn-block" onclick="logout()">
+              <i class="fa-solid fa-right-from-bracket"></i> Log out
+            </button>
+          </div>
+        </section>
+      </main>
+
+      <!-- Mobile bottom nav — primary tabs; the hamburger keeps everything -->
+      <nav class="bottom-nav" aria-label="Primary">
+        <button data-tab="home" class="active"><i class="fa-solid fa-house"></i><span>Home</span></button>
+        <button data-tab="book"><i class="fa-solid fa-plus"></i><span>Book</span></button>
+        <button data-tab="history"><i class="fa-solid fa-clock-rotate-left"></i><span>History</span></button>
+        <button data-tab="notifications"><i class="fa-solid fa-bell"></i><span class="bn-badge badge badge--danger js-notif-count" style="display:none"></span><span>Alerts</span></button>
+        <button data-tab="profile"><i class="fa-solid fa-user"></i><span>Profile</span></button>
+      </nav>
+    </div>
+
+    <!-- Booking details modal — opened from any tab (history rows and the
+         Home active-booking card), so it lives outside the tab panels. -->
+    <div
+      class="modal-overlay"
+      id="booking-details-modal-overlay"
+      aria-hidden="true"
+      onclick="closeBookingDetails()"
+      style="display: none"
+    >
+      <div
+        class="modal modal--wide"
+        id="booking-details-modal"
+        onclick="event.stopPropagation()"
+      >
+        <div class="modal-head">
+          <h3>Booking details</h3>
+          <button class="modal-close" onclick="closeBookingDetails()">
+            &times;
+          </button>
+        </div>
+        <div class="modal-body" id="booking-details-body"></div>
+      </div>
+    </div>
+
+    <!-- GCash confirmation: shows the exact amount PayMongo is about to
+         charge before the customer is handed off to the GCash page. Driven by
+         openGcashConfirm() in js/payment.js. -->
+    <div class="modal-overlay" id="pay-modal">
+      <div class="modal">
+        <div class="modal-head">
+          <h3>Confirm payment</h3>
+          <button class="modal-close" onclick="closePayModal()">
+            &times;
+          </button>
+        </div>
+        <div class="modal-body">
+          <div style="text-align: center; margin-bottom: 18px">
+            <p
+              style="
+                font-size: 0.85rem;
+                color: var(--text-muted);
+                margin-bottom: 4px;
+              "
+            >
+              Amount to pay
+            </p>
+            <div class="receipt-amount" id="pay-amount">₱0.00</div>
+          </div>
+          <dl class="receipt" id="pay-summary"></dl>
+          <p
+            style="
+              font-size: 0.8rem;
+              color: var(--text-muted);
+              margin: 14px 0 0;
+              text-align: center;
+            "
+          >
+            <i class="fa-solid fa-lock"></i> You'll be taken to GCash to
+            authorize this payment.
+          </p>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-outline-gray btn-sm" onclick="closePayModal()">
+            Cancel
+          </button>
+          <button class="btn btn-outline btn-sm" id="pay-wallet-btn" style="display: none">
+            <i class="fa-solid fa-wallet"></i> Pay from wallet
+          </button>
+          <button class="btn btn-primary btn-sm" id="pay-confirm">
+            <i class="fa-solid fa-mobile-screen-button"></i> Pay
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- rating modal -->
+    <div class="modal-overlay" id="rate-modal">
+      <div class="modal">
+        <div class="modal-head">
+          <h3>Rate your rider</h3>
+          <button class="modal-close" onclick="closeRateModal()">
+            &times;
+          </button>
+        </div>
+        <div class="modal-body">
+          <p
+            style="
+              font-size: 0.85rem;
+              color: var(--text-muted);
+              margin-bottom: 14px;
+            "
+          >
+            How was your experience?
+          </p>
+          <div class="star-input" id="star-input">
+            <i class="fa-solid fa-star" data-val="1"></i>
+            <i class="fa-solid fa-star" data-val="2"></i>
+            <i class="fa-solid fa-star" data-val="3"></i>
+            <i class="fa-solid fa-star" data-val="4"></i>
+            <i class="fa-solid fa-star" data-val="5"></i>
+          </div>
+          <div class="field">
+            <label>Comment (optional)</label>
+            <textarea
+              id="rate-comment"
+              rows="3"
+              placeholder="Share your experience…"
+            ></textarea>
+          </div>
+          <div class="field" style="margin-bottom: 0">
+            <label>Add a cash tip (optional)</label>
+            <input
+              type="number"
+              id="rate-tip"
+              min="1"
+              step="1"
+              placeholder="₱"
+            />
+            <small class="hint" style="margin-top: 6px; display: block">
+              Hand this directly to your rider — it's recorded here just so
+              it shows up in their earnings.
+            </small>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button
+            class="btn btn-outline-gray btn-sm"
+            onclick="closeRateModal()"
+          >
+            Cancel
+          </button>
+          <button class="btn btn-primary btn-sm" id="submit-rating">
+            <i class="fa-solid fa-paper-plane"></i> Submit rating
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Restaurant browse + menu/cart — opened by "Choose a restaurant" /
+         "Edit items" on the Food tab, driven by js/customer.js. Shows the
+         restaurant list first; picking one swaps the body to its menu. -->
+    <div class="modal-overlay" id="restaurant-browse-modal">
+      <div class="modal" style="max-width: 560px; width: 100%">
+        <div class="modal-head">
+          <h3 id="restaurant-browse-title">Choose a restaurant</h3>
+          <button class="modal-close" onclick="closeRestaurantBrowseModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="restaurant-browse-body"></div>
+        <div class="modal-foot" id="restaurant-browse-foot" style="display: none">
+          <button class="btn btn-outline-gray btn-sm" onclick="backToRestaurantList()">
+            <i class="fa-solid fa-arrow-left"></i> Back to restaurants
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="closeRestaurantBrowseModal()">
+            <i class="fa-solid fa-check"></i> Done
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Support / refund / dispute request — opened from a booking's details
+         ("Report an issue") or from Profile ("Need help?"), driven by
+         openSupportRequestModal() in js/customer.js. -->
+    <div class="modal-overlay" id="support-request-modal">
+      <div class="modal">
+        <div class="modal-head">
+          <h3>Report an issue</h3>
+          <button class="modal-close" onclick="closeSupportRequestModal()">
+            &times;
+          </button>
+        </div>
+        <div class="modal-body">
+          <p id="support-request-context" style="color: var(--text-muted); font-size: 0.82rem; margin-bottom: 14px; display: none"></p>
+          <div class="field">
+            <label>What's this about?</label>
+            <select id="support-category">
+              <option value="refund">Refund request</option>
+              <option value="dispute">Dispute a charge</option>
+              <option value="other">Something else</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Subject</label>
+            <input type="text" id="support-subject" placeholder="A short summary" maxlength="120" required />
+          </div>
+          <div class="field" style="margin-bottom: 0">
+            <label>Details</label>
+            <textarea id="support-message" rows="4" placeholder="Tell us what happened…" required></textarea>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-outline-gray btn-sm" onclick="closeSupportRequestModal()">
+            Cancel
+          </button>
+          <button class="btn btn-primary btn-sm" id="submit-support-request">
+            <i class="fa-solid fa-paper-plane"></i> Send to support
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="../js/pwa.js"></script>
+    <script src="../js/config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../js/supabaseClient.js"></script>
+    <script src="../js/utils.js"></script>
+    <script src="../js/auth.js"></script>
+    <script src="../js/payment.js"></script>
+    <script src="../js/map.js"></script>
+    <script>
+      // Read parcel size from radio cards
+      function getParcelSize() {
+        const checked = document.querySelector(
+          'input[name="parcel-size"]:checked',
+        );
+        return checked ? checked.value : "Small (fits a shoebox)";
+      }
+    </script>
+    <script src="../js/bookingDetails.js"></script>
+    <script src="../js/push.js"></script>
+    <script src="../js/dashboard-common.js"></script>
+    <script src="../js/customer.js"></script>
+  </body>
+</html>

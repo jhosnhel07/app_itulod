@@ -34,7 +34,7 @@ class StatusBadge extends StatelessWidget {
             decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
           ),
           Text(
-            status.toUpperCase(),
+            status.replaceAll('_', '-').toUpperCase(),
             style: AppTypography.overline.copyWith(
               color: fg,
               fontSize: fontSize,
@@ -61,6 +61,10 @@ class StatusBadge extends StatelessWidget {
       case 'rejected':
       case 'failed':
         return (AppColors.danger50, AppColors.danger);
+      case 'no_show':
+        return (AppColors.secondary50, AppColors.secondaryDark);
+      case 'expired':
+        return (AppColors.neutral100, AppColors.neutral500);
       default:
         return (AppColors.neutral100, AppColors.neutral600);
     }

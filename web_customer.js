@@ -1,0 +1,1425 @@
+/**
+ * iTULOD — customer dashboard
+ */
+let CURRENT_PROFILE = null;
+let VEHICLES = [];
+let HISTORY_KIND = 'transport';
+let HISTORY_PAGE = 1;
+const PAGE_SIZE = 6;
+let RATING_TARGET = null; // { kind, id }
+
+(async function init() {
+  CURRENT_PROFILE = await requireSession(['customer']);
+  if (!CURRENT_PROFILE) return;
+
+  document.getElementById('side-name').textContent = CURRENT_PROFILE.full_name;
+  refreshSideAvatar();
+
+  await loadVehicleOptions();
+
+  // Wire every control up front, so a later failure (a map, a slow query)
+  // can't leave buttons dead.
+  wireTabNav();
+  wireBookingSwitch();
+  wireRideForm();
+  wireFoodForm();
+  wireParcelForm();
+  wireHistoryTabs();
+  wireProfileForm();
+  wireChangePasswordForm();
+  wireSavedAddressForm();
+  wireStarInput();
+  wireSupportRequestForm();
+  wireWalletTopupForm();
+  wireReferralCard();
+
+  await loadHome();
+  await loadHistory();
+  await loadNotifications();
+  await loadSavedAddresses();
+  await loadWalletBalance();
+  await loadReferralInfo();
+  populateProfileForm();
+  subscribeRealtime();
+  startBookingExpiryWatch();
+
+  if (typeof enablePushNotifications === 'function') enablePushNotifications();
+
+  // Mapbox GL is ~200 KB and no map is visible on the Home tab — it loads the
+  // first time the New booking tab is opened (see activateTab / pinOnMap).
+})();
+
+// initials(), setAvatarImg(), TABLE_BY_KIND/ICON_BY_KIND/COLOR_BY_KIND and the
+// Profile form live in js/dashboard-common.js (shared with the rider dashboard).
+
+// Unread badge — mirrored on the sidebar link and the mobile top-bar bell.
+function setNotifCount(unread) {
+  document.querySelectorAll('.js-notif-count').forEach(el => {
+    el.textContent = unread;
+    el.style.display = unread > 0 ? 'inline-block' : 'none';
+  });
+}
+
+// ---- sidebar tab switching ---------------------------------------------
+const TAB_TITLES = {
+  'home': ['Home', 'Your bookings at a glance.'],
+  'book': ['New booking', 'Choose your pickup, destination, and vehicle.'],
+  'history': ['Booking history', 'All your rides, food, and parcel deliveries.'],
+  'notifications': ['Notifications', 'Updates about your bookings.'],
+  'profile': ['Profile', 'Manage your account details.'],
+};
+
+// Ride / Food / Parcel are one screen now — this switches between them and
+// keeps the page subtitle + that service's map in sync.
+const BOOKING_SUBTITLES = {
+  ride: 'Choose your pickup, destination, and vehicle.',
+  food: 'Order from any restaurant or store.',
+  parcel: 'Send a parcel across Ilocos Norte.',
+};
+function currentBookingService() {
+  return document.querySelector('#booking-switch .seg-btn.active')?.dataset.service || 'ride';
+}
+function setBookingService(svc) {
+  document.querySelectorAll('#booking-switch .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.service === svc));
+  document.querySelectorAll('.booking-view').forEach(v => v.classList.toggle('active', v.id === 'view-' + svc));
+  const sub = document.getElementById('page-sub');
+  if (sub && document.getElementById('tab-book').classList.contains('active')) sub.textContent = BOOKING_SUBTITLES[svc];
+  if (typeof resizeBookingMap === 'function') requestAnimationFrame(() => resizeBookingMap(svc));
+
+  // "Riders near you" only makes sense on the ride map — stop polling
+  // whenever the customer isn't looking at it.
+  if (svc === 'ride' && typeof startNearbyRidersWatch === 'function') {
+    startNearbyRidersWatch('ride');
+  } else if (typeof stopNearbyRidersWatch === 'function') {
+    stopNearbyRidersWatch();
+  }
+}
+function wireBookingSwitch() {
+  document.querySelectorAll('#booking-switch .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => setBookingService(btn.dataset.service));
+  });
+}
+
+// Single source of truth for switching tabs — driven by both the sidebar and
+// the mobile bottom nav (any element carrying a data-tab).
+function activateTab(name) {
+  if (!document.getElementById('tab-' + name)) return;
+  document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+
+  const titles = TAB_TITLES[name];
+  if (titles) {
+    document.getElementById('page-title').textContent = titles[0];
+    document.getElementById('page-sub').textContent = titles[1];
+  }
+  // Load Mapbox + create the booking maps the first time this tab is opened,
+  // then re-fit the visible one (it may have been sized while hidden).
+  if (name === 'book') {
+    if (typeof ensureBookingMaps === 'function') {
+      ensureBookingMaps().then(() => setBookingService(currentBookingService()));
+    }
+    setBookingService(currentBookingService());
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  closeSidebar();
+}
+
+function wireTabNav() {
+  document.querySelectorAll('[data-tab]').forEach(btn => {
+    btn.addEventListener('click', () => activateTab(btn.dataset.tab));
+  });
+}
+
+// ---- fare estimator: real OSRM road distance when we can get it, the
+//      deterministic placeholder otherwise --------------------------------
+function createFareEstimator({ tab, pickupEl, dropoffEl, vehicleSel, distanceEl, fareEl, breakdownEl, getStops, getMultiplier }) {
+  let route = null;        // { km, pickup:[lng,lat], dropoff:[lng,lat] } once a real route is known
+  let lastKey = '';
+  let timer = null;
+  const vehicle = () => VEHICLES.find(v => v.id === vehicleSel.value);
+  const stopsList = () => (typeof getStops === 'function' ? getStops() : []).filter(Boolean);
+  const multiplier = () => (typeof getMultiplier === 'function' ? getMultiplier() : 1);
+  const keyOf = () => (pickupEl.value || '').trim().toLowerCase() + '|' + stopsList().join(',').toLowerCase() + '|' + (dropoffEl.value || '').trim().toLowerCase() + '|' + multiplier();
+
+  function render(km, isReal) {
+    const effectiveKm = (km || 0) * multiplier();
+    distanceEl.textContent = km ? effectiveKm.toFixed(1) + ' km' + (isReal ? '' : ' (est.)') : '—';
+    const v = vehicle();
+    fareEl.textContent = km ? peso(estimateFare(v, effectiveKm)) : '₱0.00';
+    if (breakdownEl) {
+      breakdownEl.textContent = (km && v)
+        ? `${peso(v.base_fare)} base + ${Math.max(effectiveKm, 1).toFixed(1)} km × ${peso(v.per_km_rate)}/km`
+        : '';
+    }
+  }
+
+  function recalc() {
+    const a = (pickupEl.value || '').trim();
+    const b = (dropoffEl.value || '').trim();
+    const stops = stopsList();
+    if (!a || !b) { route = null; lastKey = ''; render(null); return; }
+    const key = keyOf();
+    if (route && key === lastKey) { render(route.km, true); return; }
+    render(simulateDistanceKm(a.toLowerCase(), b.toLowerCase()), false);
+    lastKey = key;
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      if (stops.length) {
+        if (typeof routeThroughWaypoints !== 'function') return;
+        const r = await routeThroughWaypoints([a, ...stops, b]);
+        if (r && keyOf() === lastKey) {
+          route = { km: r.km, pickup: r.waypoints[0], dropoff: r.waypoints[r.waypoints.length - 1] };
+          render(r.km, true);
+        }
+        return;
+      }
+      if (typeof routeBetweenAddresses !== 'function') return;
+      const r = await routeBetweenAddresses(a, b);
+      if (r && keyOf() === lastKey) {
+        route = { km: r.km, pickup: r.pickup, dropoff: r.dropoff };
+        render(r.km, true);
+      }
+    }, 700);
+  }
+
+  // Pinning both points on the map hands us coordinates + a real route now.
+  // (Map-pinning only ever sets pickup/dropoff — stops are typed addresses —
+  // so this path is skipped whenever stops are present.)
+  if (typeof onBookingRoute === 'function') {
+    onBookingRoute(tab, ({ km, pickup, dropoff }) => {
+      if (stopsList().length) return;
+      route = { km, pickup, dropoff };
+      lastKey = keyOf();
+      render(km, true);
+    });
+  }
+
+  [pickupEl, dropoffEl, vehicleSel].forEach(el => el && el.addEventListener('input', recalc));
+
+  return {
+    recalc,
+    current() {
+      const km = route ? route.km : simulateDistanceKm(
+        (pickupEl.value || '').trim().toLowerCase(),
+        (dropoffEl.value || '').trim().toLowerCase(),
+      );
+      const effectiveKm = (km || 0) * multiplier();
+      return { km: effectiveKm, coords: route ? { pickup: route.pickup, dropoff: route.dropoff } : null };
+    },
+  };
+}
+
+// ---- saved / favorite addresses ------------------------------------------
+let SAVED_ADDRESSES = [];
+
+async function loadSavedAddresses() {
+  const { data, error } = await supabase.from('saved_addresses').select('*')
+    .eq('customer_id', CURRENT_PROFILE.id).order('created_at', { ascending: false });
+  if (error) { console.warn('loadSavedAddresses failed:', error.message); return; }
+  SAVED_ADDRESSES = data || [];
+  renderSavedAddressesList();
+}
+
+function renderSavedAddressesList() {
+  const el = document.getElementById('saved-address-list');
+  if (!el) return;
+  el.innerHTML = SAVED_ADDRESSES.length
+    ? SAVED_ADDRESSES.map(a => `
+      <div class="saved-address-row">
+        <div class="saved-address-row__icon"><i class="fa-solid fa-bookmark"></i></div>
+        <div class="saved-address-row__text">
+          <strong>${escapeHtml(a.label)}</strong>
+          <span>${escapeHtml(a.address)}</span>
+        </div>
+        <button type="button" class="icon-btn" title="Delete" onclick="deleteSavedAddress('${a.id}')">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>`).join('')
+    : emptyState({ icon: 'fa-bookmark', title: 'No saved addresses yet', body: 'Add one above to fill it in with one tap next time you book.' });
+}
+
+function wireSavedAddressForm() {
+  const form = document.getElementById('saved-address-form');
+  if (!form) return;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('saved-address-submit');
+    const label = document.getElementById('saved-address-label').value.trim();
+    const address = document.getElementById('saved-address-text').value.trim();
+    if (!requireFields({ Label: label, Address: address })) return;
+
+    setLoading(btn, true);
+    const { error } = await supabase.from('saved_addresses').insert({
+      customer_id: CURRENT_PROFILE.id, label, address,
+    });
+    setLoading(btn, false);
+    if (error) { toast(error.message, 'error'); return; }
+    toast('Address saved!', 'success');
+    form.reset();
+    await loadSavedAddresses();
+  });
+}
+
+async function deleteSavedAddress(id) {
+  if (!confirm('Remove this saved address?')) return;
+  const { error } = await supabase.from('saved_addresses').delete().eq('id', id);
+  if (error) { toast(error.message, 'error'); return; }
+  await loadSavedAddresses();
+}
+
+// The small "pick a saved address" popover opened from the bookmark button
+// next to every address field in the booking forms.
+let _addrPicker = null;
+function _addrPickerOutsideClick(e) {
+  if (_addrPicker && !_addrPicker.contains(e.target) && !e.target.closest('.saved-addr-btn')) {
+    closeSavedAddressPicker();
+  }
+}
+function closeSavedAddressPicker() {
+  if (_addrPicker) { _addrPicker.remove(); _addrPicker = null; }
+  document.removeEventListener('click', _addrPickerOutsideClick, true);
+}
+function toggleSavedAddressPicker(btn, inputId) {
+  if (_addrPicker) { closeSavedAddressPicker(); return; }
+  const wrap = btn.closest('.input-map');
+  if (!wrap) return;
+
+  const picker = document.createElement('div');
+  picker.className = 'saved-addr-picker';
+  picker.innerHTML = (SAVED_ADDRESSES.length
+    ? SAVED_ADDRESSES.map(a => `
+        <button type="button" class="saved-addr-picker__item" data-id="${a.id}">
+          <strong>${escapeHtml(a.label)}</strong>
+          <span>${escapeHtml(a.address)}</span>
+        </button>`).join('')
+    : `<div class="saved-addr-picker__empty">No saved addresses yet.</div>`
+  ) + `<button type="button" class="saved-addr-picker__manage">Manage in Profile</button>`;
+  wrap.appendChild(picker);
+  _addrPicker = picker;
+
+  picker.querySelectorAll('.saved-addr-picker__item').forEach(item => {
+    item.addEventListener('click', () => {
+      const addr = SAVED_ADDRESSES.find(a => a.id === item.dataset.id);
+      const input = document.getElementById(inputId);
+      if (addr && input) {
+        input.value = addr.address;
+        input.dispatchEvent(new Event('input', { bubbles: true })); // recalculates the fare estimate
+      }
+      closeSavedAddressPicker();
+    });
+  });
+  picker.querySelector('.saved-addr-picker__manage').addEventListener('click', () => {
+    closeSavedAddressPicker();
+    activateTab('profile');
+  });
+
+  setTimeout(() => document.addEventListener('click', _addrPickerOutsideClick, true), 0);
+}
+
+// If the customer typed a promo code, validate + apply it server-side
+// (supabase/functions/redeem-promo) right after the booking is created —
+// this can only ever knock the fare down, never up, and it's applied to
+// the real row in the database, not just displayed, so there's nothing for
+// a client to spoof. Clears the input either way so a failed code doesn't
+// silently get retried on the next booking.
+async function applyPromoIfEntered(kind, bookingId, promoInputId) {
+  const input = document.getElementById(promoInputId);
+  const code = input?.value.trim();
+  if (!code) return;
+  input.value = '';
+  const { data, error } = await supabase.functions.invoke('redeem-promo', {
+    body: { code, booking_type: kind, booking_id: bookingId },
+  });
+  if (error || data?.error) {
+    toast(data?.error || error.message || 'That promo code could not be applied.', 'error');
+    return;
+  }
+  toast(`Promo applied — you saved ${peso(data.discount_amount)}!`, 'success');
+}
+
+// ---- vehicle select + fare estimate -------------------------------------
+async function loadVehicleOptions() {
+  const { data, error } = await supabase.from('vehicles').select('*').eq('is_available', true).order('base_fare');
+  VEHICLES = data || [];
+  const opts = error || VEHICLES.length === 0
+    ? `<option value="">No vehicles configured yet</option>`
+    : VEHICLES.map(v => `<option value="${v.id}">${v.name} — from ${peso(v.base_fare)}</option>`).join('');
+  ['ride-vehicle', 'food-vehicle', 'parcel-vehicle'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (sel) sel.innerHTML = opts;
+  });
+}
+
+const MAX_RIDE_STOPS = 3;
+
+function wireRideForm() {
+  const form = document.getElementById('ride-form');
+  const pickup = document.getElementById('ride-pickup');
+  const dest = document.getElementById('ride-destination');
+  const vehicleSel = document.getElementById('ride-vehicle');
+  const distanceEl = document.getElementById('ride-distance');
+  const fareEl = document.getElementById('ride-fare');
+  const breakdownEl = document.getElementById('ride-fare-breakdown');
+  const stopsContainer = document.getElementById('ride-stops-container');
+  const addStopBtn = document.getElementById('ride-add-stop-btn');
+
+  const getStops = () => Array.from(stopsContainer?.querySelectorAll('input') || []).map(i => i.value.trim());
+  const est = createFareEstimator({ tab: 'ride', pickupEl: pickup, dropoffEl: dest, vehicleSel, distanceEl, fareEl, breakdownEl, getStops });
+
+  function updateAddStopBtn() {
+    if (addStopBtn && stopsContainer) addStopBtn.style.display = stopsContainer.children.length >= MAX_RIDE_STOPS ? 'none' : '';
+  }
+  function addStopRow() {
+    if (!stopsContainer || stopsContainer.children.length >= MAX_RIDE_STOPS) return;
+    const row = document.createElement('div');
+    row.className = 'ride-stop-row';
+    row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = `Stop ${stopsContainer.children.length + 1} address`;
+    input.style.flex = '1';
+    input.addEventListener('input', () => est.recalc());
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'icon-btn';
+    removeBtn.title = 'Remove stop';
+    removeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    removeBtn.addEventListener('click', () => {
+      row.remove();
+      Array.from(stopsContainer.querySelectorAll('.ride-stop-row')).forEach((r, i) => {
+        r.querySelector('input').placeholder = `Stop ${i + 1} address`;
+      });
+      updateAddStopBtn();
+      est.recalc();
+    });
+    row.appendChild(input);
+    row.appendChild(removeBtn);
+    stopsContainer.appendChild(row);
+    updateAddStopBtn();
+  }
+  if (addStopBtn) addStopBtn.addEventListener('click', addStopRow);
+
+  form.querySelectorAll('input, textarea, select').forEach(el => {
+    el.addEventListener('input', () => saveFormDraft('itulod-customer-ride', form));
+    el.addEventListener('change', () => saveFormDraft('itulod-customer-ride', form));
+  });
+  restoreFormDraft('itulod-customer-ride', form);
+  est.recalc();
+
+  const scheduleToggle = document.getElementById('ride-schedule-toggle');
+  const scheduleField = document.getElementById('ride-schedule-field');
+  const scheduleInput = document.getElementById('ride-schedule-time');
+  if (scheduleToggle) {
+    scheduleToggle.addEventListener('change', () => {
+      scheduleField.style.display = scheduleToggle.checked ? '' : 'none';
+      if (!scheduleToggle.checked) scheduleInput.value = '';
+    });
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('ride-submit');
+    const vehicle = VEHICLES.find(v => v.id === vehicleSel.value);
+    if (!requireFields({ 'Pickup location': pickup.value, 'Destination': dest.value, 'Vehicle': vehicle })) return;
+
+    let scheduledFor = null;
+    if (scheduleToggle?.checked) {
+      if (!scheduleInput.value) { toast('Pick a pickup date and time, or turn off scheduling.', 'error'); return; }
+      const when = new Date(scheduleInput.value);
+      const minLead = new Date(Date.now() + 10 * 60 * 1000);
+      const maxLead = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      if (when < minLead) { toast('Scheduled pickup must be at least 10 minutes from now.', 'error'); return; }
+      if (when > maxLead) { toast('Scheduled pickup can be at most 7 days from now.', 'error'); return; }
+      scheduledFor = when.toISOString();
+    }
+
+    const paymentMethod = document.getElementById('ride-payment').value; // cash | gcash
+    const { km, coords } = est.current();
+    // One fare value for both the inserted row and the confirmation modal, so
+    // the amount shown can never drift from the amount charged.
+    const fare = estimateFare(vehicle, km);
+    setLoading(btn, true);
+    const { data: booking, error } = await supabase.from('transport_bookings').insert({
+      customer_id: CURRENT_PROFILE.id,
+      vehicle_id: vehicle.id,
+      pickup_address: pickup.value.trim(),
+      destination_address: dest.value.trim(),
+      distance_km: Number(km.toFixed(2)),
+      estimated_fare: fare,
+      pickup_lng: coords?.pickup?.[0] ?? null,
+      pickup_lat: coords?.pickup?.[1] ?? null,
+      destination_lng: coords?.dropoff?.[0] ?? null,
+      destination_lat: coords?.dropoff?.[1] ?? null,
+      status: 'pending',
+      payment_method: paymentMethod,
+      scheduled_for: scheduledFor
+    }).select('id').single();
+    setLoading(btn, false);
+    if (error) { toast(error.message, 'error'); return; }
+
+    const stopAddresses = getStops().filter(Boolean);
+    if (stopAddresses.length) {
+      const { error: stopsErr } = await supabase.from('ride_stops').insert(
+        stopAddresses.map((address, i) => ({ booking_id: booking.id, stop_order: i + 1, address }))
+      );
+      if (stopsErr) toast(`Ride booked, but the stops didn't save: ${stopsErr.message}`, 'error');
+    }
+
+    // Booking creation only places the booking — it never redirects to GCash
+    // by itself. A GCash payment is something the customer does afterward,
+    // as a separate step, from the "Pay ₱X" button on Home or Booking
+    // history (renderHomeActive / renderHistoryCard's needsPaymentRetry).
+    toast(
+      scheduledFor
+        ? `Ride scheduled for ${formatDate(scheduledFor)}. We'll line up a rider closer to the time.`
+        : paymentMethod === 'gcash'
+          ? 'Ride booked! Pay with GCash from Home or Booking history whenever you’re ready.'
+          : 'Ride booked! Waiting for a rider to accept.',
+      'success'
+    );
+    await applyPromoIfEntered('transport', booking.id, 'ride-promo');
+    // Show route on map (shared geocoder — OpenStreetMap first, Mapbox backup)
+    const [pLngLat, dLngLat] = await Promise.all([
+      _geocodeAddress(pickup.value),
+      _geocodeAddress(dest.value),
+    ]);
+    if (pLngLat) setTrackingMarker('pickup', pLngLat, '#22c55e', 'Pickup');
+    if (dLngLat) setTrackingMarker('dropoff', dLngLat, '#ef4444', 'Drop-off');
+    if (pLngLat && dLngLat) drawRoute(pLngLat, dLngLat);
+
+    clearFormDraft('itulod-customer-ride');
+    e.target.reset(); distanceEl.textContent = '—'; fareEl.textContent = '₱0.00'; if (breakdownEl) breakdownEl.textContent = '';
+    if (scheduleField) scheduleField.style.display = 'none';
+    if (stopsContainer) stopsContainer.innerHTML = '';
+    updateAddStopBtn();
+    HISTORY_KIND = 'transport'; await loadHistory(); await loadHome();
+  });
+}
+
+// ---- food: restaurant + menu + cart --------------------------------------
+// A cart order's item prices are fixed and known up front, unlike a typed
+// free-text order — but GCash is still only ever charged once the rider
+// confirms the fare (never at booking time, an explicit standing product
+// decision — see finalize-fare / needsFinalFare in rider.js). estimated_fare
+// is set to the real computed total (items + delivery) here, which the
+// rider's "Set fare" input already defaults to, so confirming it is a
+// one-tap action instead of a blind guess — final_fare itself is still only
+// ever set by the rider, same as every other food order.
+let FOOD_CART = { restaurantId: null, restaurantName: null, restaurantAddress: null, items: {} };
+let FOOD_ROUTE_KM = null;
+let FOOD_ROUTE_TIMER = null;
+
+function foodCartSubtotal() {
+  return Object.values(FOOD_CART.items).reduce((sum, it) => sum + it.price * it.qty, 0);
+}
+
+function renderFoodFare(km, vehicle, subtotal, isReal) {
+  const distanceEl = document.getElementById('food-distance');
+  const feeEl = document.getElementById('food-delivery-fee');
+  const totalEl = document.getElementById('food-fare');
+  const subtotalEl = document.getElementById('food-item-subtotal');
+  if (subtotalEl) subtotalEl.textContent = peso(subtotal);
+  if (distanceEl) distanceEl.textContent = km ? km.toFixed(1) + ' km' + (isReal ? '' : ' (est.)') : '—';
+  const deliveryFee = (km && vehicle) ? estimateFare(vehicle, km) : 0;
+  if (feeEl) feeEl.textContent = peso(deliveryFee);
+  if (totalEl) totalEl.textContent = peso(subtotal + deliveryFee);
+}
+
+function recalcFoodFare() {
+  const isPabili = document.getElementById('food-is-pabili')?.checked ?? false;
+  const pickup = isPabili 
+    ? (document.getElementById('food-pabili-address')?.value || '').trim()
+    : (document.getElementById('food-pickup')?.value || '').trim();
+    
+  const address = (document.getElementById('food-address').value || '').trim();
+  const vehicle = VEHICLES.find(v => v.id === document.getElementById('food-vehicle').value);
+  const subtotal = isPabili ? 0 : foodCartSubtotal();
+
+  if (!pickup || !address) {
+    FOOD_ROUTE_KM = null;
+    renderFoodFare(null, vehicle, subtotal, false);
+    return;
+  }
+
+  const guess = simulateDistanceKm(pickup.toLowerCase(), address.toLowerCase());
+  renderFoodFare(guess, vehicle, subtotal, false);
+
+  clearTimeout(FOOD_ROUTE_TIMER);
+  const key = pickup.toLowerCase() + '|' + address.toLowerCase();
+  FOOD_ROUTE_TIMER = setTimeout(async () => {
+    if (typeof routeBetweenAddresses !== 'function') return;
+    const r = await routeBetweenAddresses(pickup, address);
+    
+    const nowPickup = isPabili
+      ? (document.getElementById('food-pabili-address')?.value || '').trim().toLowerCase()
+      : (document.getElementById('food-pickup')?.value || '').trim().toLowerCase();
+    
+    const nowAddress = (document.getElementById('food-address').value || '').trim().toLowerCase();
+    if (r && (nowPickup + '|' + nowAddress) === key) {
+      FOOD_ROUTE_KM = r.km;
+      renderFoodFare(r.km, VEHICLES.find(v => v.id === document.getElementById('food-vehicle').value), isPabili ? 0 : foodCartSubtotal(), true);
+    }
+  }, 700);
+}
+
+function updateFoodRestaurantSummary() {
+  const emptyNote = document.getElementById('food-restaurant-empty-note');
+  const nameDisplay = document.getElementById('food-restaurant-name-display');
+  const btnLabel = document.getElementById('food-choose-btn-label');
+  const pickupField = document.getElementById('food-pickup-field');
+  const pickupInput = document.getElementById('food-pickup');
+  const cartField = document.getElementById('food-cart-field');
+  const cartList = document.getElementById('food-cart-list');
+
+  document.getElementById('food-restaurant-id').value = FOOD_CART.restaurantId || '';
+
+  if (!FOOD_CART.restaurantId) {
+    if (emptyNote) emptyNote.style.display = '';
+    if (nameDisplay) nameDisplay.style.display = 'none';
+    if (btnLabel) btnLabel.textContent = 'Choose a restaurant';
+    if (pickupField) pickupField.style.display = 'none';
+    if (cartField) cartField.style.display = 'none';
+    pickupInput.value = '';
+  } else {
+    if (emptyNote) emptyNote.style.display = 'none';
+    if (nameDisplay) { nameDisplay.style.display = ''; nameDisplay.textContent = FOOD_CART.restaurantName; }
+    if (btnLabel) btnLabel.textContent = 'Change restaurant';
+    if (pickupField) pickupField.style.display = '';
+    pickupInput.value = FOOD_CART.restaurantAddress;
+
+    const items = Object.values(FOOD_CART.items);
+    if (cartField) cartField.style.display = items.length ? '' : 'none';
+    if (cartList) {
+      cartList.innerHTML = items.length
+        ? items.map(it => `<div style="display:flex;justify-content:space-between;font-size:0.85rem;padding:2px 0"><span>${it.qty} × ${escapeHtml(it.name)}</span><span>${peso(it.price * it.qty)}</span></div>`).join('')
+        : '';
+    }
+  }
+  recalcFoodFare();
+}
+
+function wireFoodForm() {
+  const form = document.getElementById('food-form');
+  const address = document.getElementById('food-address');
+  const vehicleSel = document.getElementById('food-vehicle');
+  
+  // Custom Pabili toggle
+  const isPabiliCheckbox = document.getElementById('food-is-pabili');
+  const restaurantPickerGroup = document.getElementById('food-restaurant-picker-group');
+  const pabiliGroup = document.getElementById('food-pabili-group');
+  const pabiliStore = document.getElementById('food-pabili-store');
+  const pabiliAddress = document.getElementById('food-pabili-address');
+
+  if (isPabiliCheckbox) {
+    isPabiliCheckbox.addEventListener('change', () => {
+      if (isPabiliCheckbox.checked) {
+        restaurantPickerGroup.style.display = 'none';
+        pabiliGroup.style.display = 'block';
+      } else {
+        restaurantPickerGroup.style.display = 'block';
+        pabiliGroup.style.display = 'none';
+      }
+      recalcFoodFare();
+    });
+  }
+
+  form.querySelectorAll('input, textarea, select').forEach(el => {
+    el.addEventListener('input', () => saveFormDraft('itulod-customer-food', form));
+    el.addEventListener('change', () => saveFormDraft('itulod-customer-food', form));
+  });
+  restoreFormDraft('itulod-customer-food', form);
+  // The restaurant/cart is deliberately never restored from a draft (it's
+  // dynamic state, not a named form field) — the customer just re-picks if
+  // they left mid-order.
+  [address, vehicleSel, pabiliAddress].forEach(el => el?.addEventListener('input', recalcFoodFare));
+  updateFoodRestaurantSummary();
+
+  const chooseBtn = document.getElementById('food-choose-restaurant-btn');
+  if (chooseBtn) chooseBtn.addEventListener('click', () => openRestaurantBrowseModal());
+  const editCartBtn = document.getElementById('food-edit-cart-btn');
+  if (editCartBtn) editCartBtn.addEventListener('click', () => openRestaurantBrowseModal(FOOD_CART.restaurantId));
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('food-submit');
+    const vehicle = VEHICLES.find(v => v.id === vehicleSel.value);
+    const items = Object.values(FOOD_CART.items);
+    const instructions = document.getElementById('food-instructions').value.trim();
+    const isPabili = isPabiliCheckbox?.checked ?? false;
+
+    if (!isPabili) {
+      if (!FOOD_CART.restaurantId || items.length === 0) {
+        toast('Choose a restaurant and add at least one item.', 'error');
+        return;
+      }
+    } else {
+      if (!pabiliStore.value.trim() || !pabiliAddress.value.trim() || !instructions) {
+        toast('Please enter the store name, store address, and instructions for your Pabili request.', 'error');
+        return;
+      }
+    }
+    
+    if (!requireFields({ 'Delivery address': address.value, 'Vehicle': vehicle })) return;
+
+    let subtotal = 0;
+    let pickupAddr = '';
+    let restaurantId = null;
+    let restaurantName = null;
+    let pabiliStoreName = null;
+
+    if (isPabili) {
+      pickupAddr = pabiliAddress.value.trim();
+      pabiliStoreName = pabiliStore.value.trim();
+    } else {
+      subtotal = foodCartSubtotal();
+      pickupAddr = FOOD_CART.restaurantAddress;
+      restaurantId = FOOD_CART.restaurantId;
+      restaurantName = FOOD_CART.restaurantName;
+    }
+
+    const km = FOOD_ROUTE_KM ?? simulateDistanceKm(pickupAddr.toLowerCase(), address.value.trim().toLowerCase());
+    const deliveryFee = estimateFare(vehicle, km);
+    const total = Math.round((subtotal + deliveryFee) * 100) / 100;
+    const paymentMethod = document.getElementById('food-payment')?.value || 'cash';
+
+    setLoading(btn, true);
+    const { data: booking, error } = await supabase.from('food_deliveries').insert({
+      customer_id: CURRENT_PROFILE.id,
+      restaurant_id: restaurantId,
+      restaurant_name: restaurantName,
+      pabili_store_name: pabiliStoreName,
+      pickup_address: pickupAddr,
+      delivery_address: address.value.trim(),
+      instructions, vehicle_id: vehicle.id,
+      item_subtotal: subtotal, delivery_fee: deliveryFee,
+      // final_fare is deliberately left unset here, same as every other food
+      // order — GCash is only ever charged once the rider confirms the fare
+      // (see finalize-fare / needsFinalFare in rider.js), never at booking
+      // time. estimated_fare is the real, computed total though, so the
+      // rider's "Set fare" input is pre-filled with the right number already
+      // (renderAcceptedCard's ff-${id} input defaults to estimated_fare) —
+      // a one-tap confirmation instead of a blind guess.
+      estimated_fare: total,
+      distance_km: Number(km.toFixed(2)), status: 'pending', payment_method: paymentMethod,
+    }).select('id').single();
+    setLoading(btn, false);
+    if (error) { toast(error.message, 'error'); return; }
+
+    const { error: itemsErr } = await supabase.from('food_order_items').insert(
+      items.map(it => ({
+        food_delivery_id: booking.id, menu_item_id: it.id, name: it.name,
+        unit_price: it.price, quantity: it.qty, subtotal: Math.round(it.price * it.qty * 100) / 100,
+      }))
+    );
+    if (itemsErr) toast(`Order placed, but the item list didn't save: ${itemsErr.message}`, 'error');
+
+    toast(
+      paymentMethod === 'gcash'
+        ? `Order placed (${peso(total)})! We'll ask you to pay by GCash once the rider confirms the fare at pickup.`
+        : `Order placed! You'll pay ${peso(total)} cash on delivery.`,
+      'success'
+    );
+
+    clearFormDraft('itulod-customer-food');
+    e.target.reset();
+    FOOD_CART = { restaurantId: null, restaurantName: null, restaurantAddress: null, items: {} };
+    FOOD_ROUTE_KM = null;
+    updateFoodRestaurantSummary();
+    HISTORY_KIND = 'food'; await loadHistory();
+  });
+}
+
+// ---- restaurant browse + menu modal ---------------------------------------
+let RESTAURANT_BROWSE_VIEW = 'list'; // 'list' | 'menu'
+let RESTAURANT_BROWSE_RESTAURANT = null;
+
+async function openRestaurantBrowseModal(preselectRestaurantId) {
+  document.getElementById('restaurant-browse-modal').classList.add('open');
+  if (preselectRestaurantId) {
+    const { data } = await supabase.from('restaurants').select('*').eq('id', preselectRestaurantId).maybeSingle();
+    if (data) { await showRestaurantMenu(data); return; }
+  }
+  await showRestaurantList();
+}
+function closeRestaurantBrowseModal() {
+  document.getElementById('restaurant-browse-modal').classList.remove('open');
+  updateFoodRestaurantSummary();
+}
+function backToRestaurantList() { showRestaurantList(); }
+
+async function showRestaurantList() {
+  RESTAURANT_BROWSE_VIEW = 'list';
+  RESTAURANT_BROWSE_RESTAURANT = null;
+  document.getElementById('restaurant-browse-title').textContent = 'Choose a restaurant';
+  document.getElementById('restaurant-browse-foot').style.display = 'none';
+  const body = document.getElementById('restaurant-browse-body');
+  body.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading restaurants…</div>`;
+
+  const { data, error } = await supabase.from('restaurants').select('*').eq('is_active', true).order('name');
+  if (error) { body.innerHTML = `<p class="muted">Could not load restaurants: ${escapeHtml(error.message)}</p>`; return; }
+  if (!data || data.length === 0) {
+    body.innerHTML = emptyState({ icon: 'fa-store', title: 'No restaurants yet', body: 'Check back soon.' });
+    return;
+  }
+  body.innerHTML = data.map(r => `
+    <div class="booking-card" style="cursor:pointer" onclick='selectRestaurantForMenu(${JSON.stringify(r).replace(/'/g, "&#39;")})'>
+      <div class="kind-icon" style="background:var(--blue)"><i class="fa-solid fa-store"></i></div>
+      <div class="info"><div>
+        <h4>${escapeHtml(r.name)}</h4>
+        <p>${escapeHtml(r.cuisine_type || 'Restaurant')} · ${escapeHtml(r.address)}</p>
+      </div></div>
+      <div class="meta"><i class="fa-solid fa-chevron-right"></i></div>
+    </div>`).join('');
+}
+
+async function selectRestaurantForMenu(restaurant) {
+  if (FOOD_CART.restaurantId && FOOD_CART.restaurantId !== restaurant.id && Object.keys(FOOD_CART.items).length) {
+    if (!confirm(`Switching restaurants clears your current order from ${FOOD_CART.restaurantName}. Continue?`)) return;
+    FOOD_CART.items = {};
+  }
+  await showRestaurantMenu(restaurant);
+}
+
+async function showRestaurantMenu(restaurant) {
+  RESTAURANT_BROWSE_VIEW = 'menu';
+  RESTAURANT_BROWSE_RESTAURANT = restaurant;
+  FOOD_CART.restaurantId = restaurant.id;
+  FOOD_CART.restaurantName = restaurant.name;
+  FOOD_CART.restaurantAddress = restaurant.address;
+
+  document.getElementById('restaurant-browse-title').textContent = restaurant.name;
+  document.getElementById('restaurant-browse-foot').style.display = '';
+  const body = document.getElementById('restaurant-browse-body');
+  body.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading menu…</div>`;
+
+  const { data, error } = await supabase.from('menu_items').select('*').eq('restaurant_id', restaurant.id).eq('is_available', true).order('name');
+  if (error) { body.innerHTML = `<p class="muted">Could not load the menu: ${escapeHtml(error.message)}</p>`; return; }
+  renderMenuItems(data || []);
+}
+
+function renderMenuItems(items) {
+  const body = document.getElementById('restaurant-browse-body');
+  if (items.length === 0) {
+    body.innerHTML = emptyState({ icon: 'fa-utensils', title: 'No items available', body: 'This restaurant has nothing listed right now.' });
+    return;
+  }
+  body.innerHTML = items.map(m => {
+    const qty = FOOD_CART.items[m.id]?.qty || 0;
+    return `
+      <div class="bd-row" data-menu-item="${m.id}">
+        <span>
+          <strong>${escapeHtml(m.name)}</strong><br>
+          <span style="color:var(--text-muted);font-size:0.82rem">${peso(m.price)}${m.description ? ' · ' + escapeHtml(m.description) : ''}</span>
+        </span>
+        <span style="display:flex;align-items:center;gap:8px">
+          <button type="button" class="icon-btn" onclick='changeCartQty(${JSON.stringify(m).replace(/'/g, "&#39;")}, -1)'><i class="fa-solid fa-minus"></i></button>
+          <span class="menu-item-qty" style="min-width:1.2em;text-align:center">${qty}</span>
+          <button type="button" class="icon-btn" onclick='changeCartQty(${JSON.stringify(m).replace(/'/g, "&#39;")}, 1)'><i class="fa-solid fa-plus"></i></button>
+        </span>
+      </div>`;
+  }).join('');
+}
+
+function changeCartQty(menuItem, delta) {
+  const existing = FOOD_CART.items[menuItem.id];
+  const nextQty = (existing?.qty || 0) + delta;
+  if (nextQty <= 0) {
+    delete FOOD_CART.items[menuItem.id];
+  } else {
+    FOOD_CART.items[menuItem.id] = { id: menuItem.id, name: menuItem.name, price: Number(menuItem.price), qty: nextQty };
+  }
+  const qtyEl = document.querySelector(`.bd-row[data-menu-item="${menuItem.id}"] .menu-item-qty`);
+  if (qtyEl) qtyEl.textContent = nextQty > 0 ? nextQty : 0;
+}
+
+function wireParcelForm() {
+  const form = document.getElementById('parcel-form');
+  const senderAddr = document.getElementById('parcel-sender-address');
+  const receiverAddr = document.getElementById('parcel-receiver-address');
+  const vehicleSel = document.getElementById('parcel-vehicle');
+  const distanceEl = document.getElementById('parcel-distance');
+  const fareEl = document.getElementById('parcel-fare');
+  const breakdownEl = document.getElementById('parcel-fare-breakdown');
+
+  const roundTripToggle = document.getElementById('parcel-is-round-trip');
+  const getMultiplier = () => roundTripToggle?.checked ? 2 : 1;
+  const est = createFareEstimator({ tab: 'parcel', pickupEl: senderAddr, dropoffEl: receiverAddr, vehicleSel, distanceEl, fareEl, breakdownEl, getMultiplier });
+  if (roundTripToggle) roundTripToggle.addEventListener('change', () => est.recalc());
+
+  const masks = [
+    attachInputMask(document.getElementById('parcel-sender-name'), formatName),
+    attachInputMask(document.getElementById('parcel-receiver-name'), formatName),
+    attachInputMask(document.getElementById('parcel-sender-phone'), formatPhoneMobile),
+    attachInputMask(document.getElementById('parcel-receiver-phone'), formatPhoneMobile),
+    attachInputMask(document.getElementById('parcel-cod-amount'), val => {
+      // Just keep numeric with decimal
+      let v = val.replace(/[^\d.]/g, '');
+      const parts = v.split('.');
+      if (parts.length > 2) v = parts[0] + '.' + parts.slice(1).join('');
+      return v;
+    }),
+  ];
+  form.querySelectorAll('input, textarea, select').forEach(el => {
+    el.addEventListener('input', () => saveFormDraft('itulod-customer-parcel', form));
+    el.addEventListener('change', () => saveFormDraft('itulod-customer-parcel', form));
+  });
+  restoreFormDraft('itulod-customer-parcel', form);
+  masks.forEach(reformat => reformat && reformat()); // format any restored draft values
+  est.recalc();
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('parcel-submit');
+    const vehicle = VEHICLES.find(v => v.id === vehicleSel.value);
+    const { km } = est.current();
+    const fare = vehicle ? estimateFare(vehicle, km) : null;
+    const paymentMethod = document.getElementById('parcel-payment')?.value || 'cash';
+    const payload = {
+      customer_id: CURRENT_PROFILE.id,
+      sender_name: document.getElementById('parcel-sender-name').value.trim(),
+      sender_phone: normalizePhoneMobile(document.getElementById('parcel-sender-phone').value),
+      sender_address: senderAddr.value.trim(),
+      receiver_name: document.getElementById('parcel-receiver-name').value.trim(),
+      receiver_phone: normalizePhoneMobile(document.getElementById('parcel-receiver-phone').value),
+      receiver_address: receiverAddr.value.trim(),
+      parcel_size: (document.querySelector('input[name="parcel-size"]:checked')?.value) || 'Small (fits a shoebox)',
+      parcel_weight: parseFloat(document.getElementById('parcel-weight').value) || null,
+      parcel_description: document.getElementById('parcel-description').value.trim(),
+      instructions: document.getElementById('parcel-instructions').value.trim(),
+      vehicle_id: vehicle?.id || null,
+      estimated_fare: fare,
+      distance_km: Number(km.toFixed(2)),
+      is_round_trip: roundTripToggle?.checked ?? false,
+      cod_amount: parseFloat(document.getElementById('parcel-cod-amount')?.value) || 0.0,
+      status: 'pending',
+      payment_method: paymentMethod,
+    };
+    if (!requireFields({
+      'Sender name': payload.sender_name, 'Sender address': payload.sender_address,
+      'Receiver name': payload.receiver_name, 'Receiver address': payload.receiver_address,
+      'Vehicle': vehicle
+    })) return;
+    for (const [label, val] of [['Sender name', payload.sender_name], ['Receiver name', payload.receiver_name]]) {
+      if (!isValidName(val)) {
+        toast(`${label} should be letters only.`, 'error');
+        return;
+      }
+    }
+    for (const [label, val] of [['Sender phone', payload.sender_phone], ['Receiver phone', payload.receiver_phone]]) {
+      if (val && !isValidPhoneMobile(val)) {
+        toast(`${label} must be a valid mobile number (09XX XXX XXXX).`, 'error');
+        return;
+      }
+    }
+    setLoading(btn, true);
+    const { data: booking, error } = await supabase.from('parcel_deliveries').insert(payload).select('id').single();
+    setLoading(btn, false);
+    if (error) { toast(error.message, 'error'); return; }
+
+    // See wireFoodForm() for why GCash isn't charged here: only the rider
+    // knows the real price once they see the parcel, so payment waits for
+    // finalize-fare to set final_fare, which is what reveals "Pay ₱X" in
+    // Booking history.
+    toast(
+      paymentMethod === 'gcash'
+        ? "Parcel delivery requested! We'll ask you to pay by GCash once the rider confirms the fare at pickup."
+        : 'Parcel delivery requested!',
+      'success'
+    );
+    clearFormDraft('itulod-customer-parcel');
+    e.target.reset(); distanceEl.textContent = '—'; fareEl.textContent = '₱0.00'; if (breakdownEl) breakdownEl.textContent = '';
+    HISTORY_KIND = 'parcel'; await loadHistory();
+  });
+}
+
+// ---- home / overview ---------------------------------------------------
+const HOME_KIND_LABEL = { transport: 'Ride', food: 'Food delivery', parcel: 'Parcel delivery' };
+
+// The webhook is the real source of truth, but it's pushed to us
+// asynchronously — a customer who clicks "Back to dashboard" before it lands
+// would otherwise still see "Awaiting confirmation" here. Nudge PayMongo
+// directly (read-only — see supabase/functions/sync-payment-status) for any
+// booking that's still waiting on a GCash payment, whenever the dashboard
+// loads a list that might contain one. Fire-and-forget: the realtime
+// subscription re-renders once the row actually changes.
+function syncPendingPayments(rows, kindOf) {
+  rows
+    .filter(b => b.payment_method === 'gcash' && b.payment_status === 'pending' && b.paymongo_reference)
+    .forEach(b => {
+      supabase.functions.invoke('sync-payment-status', {
+        body: { booking_type: kindOf(b), booking_id: b.id },
+      }).catch((err) => console.warn('sync-payment-status check failed:', err?.message)); // best-effort — the webhook/next load still catches it
+    });
+}
+
+async function loadHome() {
+  const kinds = Object.keys(TABLE_BY_KIND);
+  const perKind = await Promise.all(kinds.map(k =>
+    supabase.from(TABLE_BY_KIND[k]).select('*').eq('customer_id', CURRENT_PROFILE.id)
+      .order('created_at', { ascending: false })
+      .then(r => (r.data || []).map(row => ({ ...row, _kind: k })))
+  ));
+  const rows = perKind.flat().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  syncPendingPayments(rows, (b) => b._kind);
+
+  // Lifetime stats
+  const completed = rows.filter(r => r.status === 'completed');
+  const spent = completed.reduce((a, r) => a + Number(r.final_fare ?? r.estimated_fare ?? 0), 0);
+  const monthStart = new Date();
+  monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+  document.getElementById('home-stat-trips').textContent = completed.length;
+  document.getElementById('home-stat-spent').textContent = peso(spent);
+  document.getElementById('home-stat-month').textContent =
+    completed.filter(r => new Date(r.created_at) >= monthStart).length;
+
+  // Active booking (pending / accepted / ongoing)
+  const active = rows.find(r => ['pending', 'accepted', 'ongoing'].includes(r.status));
+  let rider = null;
+  if (active && active.rider_id) {
+    const { data } = await supabase.from('profiles').select('full_name, phone').eq('id', active.rider_id).single();
+    rider = data || null;
+  }
+  renderHomeActive(active, rider);
+
+  // Recent activity
+  const recent = document.getElementById('home-recent');
+  recent.innerHTML = rows.length
+    ? rows.slice(0, 4).map(r => renderHistoryCard(r, r._kind)).join('')
+    : emptyState({ icon: 'fa-inbox', title: 'No bookings yet', body: 'Your rides and deliveries will show up here.' });
+}
+
+function renderHomeActive(b, rider) {
+  const el = document.getElementById('home-active');
+  if (!b) {
+    el.innerHTML = `
+      <div class="home-hero">
+        <div>
+          <h3>Ready when you are</h3>
+          <p>Book a ride, order food, or send a parcel across Ilocos Norte.</p>
+        </div>
+        <button type="button" class="btn btn-primary" onclick="activateTab('book')">
+          <i class="fa-solid fa-plus"></i> New booking
+        </button>
+      </div>`;
+    return;
+  }
+  const kind = b._kind;
+  const title = kind === 'transport' ? `${b.pickup_address} → ${b.destination_address}`
+    : kind === 'food' ? `${b.restaurant_name} → ${b.delivery_address}`
+    : `${b.sender_address} → ${b.receiver_address}`;
+  const stage = b.status === 'pending' ? 'Finding you a rider…'
+    : b.status === 'accepted' ? 'Rider is on the way to pickup'
+    : 'Trip in progress';
+  const riderLine = b.rider_id
+    ? `<span><i class="fa-solid fa-motorcycle"></i> ${escapeHtml(rider?.full_name || 'Rider assigned')}${rider?.phone ? ' · ' + escapeHtml(rider.phone) : ''}</span>`
+    : `<span><i class="fa-solid fa-user-clock"></i> No rider yet</span>`;
+  // Bookings expire automatically after a 15-minute grace period — pending
+  // ones if nobody accepts, accepted ones if the rider never starts the job.
+  const graceHint = b.status === 'pending'
+    ? "You have a 15-minute grace period — if no rider accepts by then, this request expires automatically."
+    : b.status === 'accepted'
+      ? 'Your rider has a 15-minute grace period to start this trip before it expires automatically.'
+      : '';
+  const { needsPay, payable } = paymentDue(b, kind);
+  el.innerHTML = `
+    <div class="home-active card">
+      <div class="home-active__head">
+        <span class="home-active__tag"><i class="fa-solid ${ICON_BY_KIND[kind]}"></i> ${HOME_KIND_LABEL[kind]}</span>
+        ${statusBadge(b.status)}
+      </div>
+      <h3>${escapeHtml(title)}</h3>
+      <p class="home-active__stage">${stage}</p>
+      ${graceHint ? `<p class="home-active__hint"><i class="fa-regular fa-clock"></i> ${graceHint}</p>` : ''}
+      <div class="home-active__meta">
+        ${riderLine}
+        <span><i class="fa-solid fa-peso-sign"></i> ${peso(b.final_fare ?? b.estimated_fare)}</span>
+      </div>
+      <div class="home-active__actions">
+        <button type="button" class="btn btn-primary btn-sm" onclick="openBookingDetails({ kind: '${kind}', id: '${b.id}' })">
+          <i class="fa-solid fa-eye"></i> View details
+        </button>
+        ${needsPay
+          ? `<button type="button" class="btn btn-outline btn-sm" onclick="retryPayment('${b.id}','${kind}')"><i class="fa-solid fa-mobile-screen-button"></i> Pay ${peso(payable)}</button>`
+          : ''}
+        ${['pending', 'accepted'].includes(b.status)
+          ? `<button type="button" class="btn btn-outline btn-sm btn-danger-ghost" onclick="cancelBooking('${kind}','${b.id}')"><i class="fa-solid fa-xmark"></i> Cancel</button>`
+          : ''}
+      </div>
+    </div>`;
+}
+
+// ---- history -------------------------------------------------------------
+function wireHistoryTabs() {
+  document.querySelectorAll('.tab-btn[data-history]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn[data-history]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      HISTORY_KIND = btn.dataset.history;
+      HISTORY_PAGE = 1;
+      loadHistory();
+    });
+  });
+}
+
+
+async function loadHistory() {
+  const table = TABLE_BY_KIND[HISTORY_KIND];
+  const list = document.getElementById('history-list');
+  showSkeleton(list, skeletonList(3), HISTORY_KIND);
+  const { data, error } = await supabase.from(table).select('*').eq('customer_id', CURRENT_PROFILE.id).order('created_at', { ascending: false });
+  if (error) {
+    list.innerHTML = emptyState({
+      icon: 'fa-triangle-exclamation',
+      title: 'Could not load your bookings',
+      body: error.message,
+      tone: 'error'
+    });
+    // Otherwise the previous page's pagination bar sits under the error.
+    document.getElementById('history-pagination').innerHTML = '';
+    return;
+  }
+  if (!data || data.length === 0) {
+    list.innerHTML = emptyState({
+      icon: 'fa-inbox',
+      title: 'No bookings yet',
+      body: 'Bookings in this category will show up here once you make one.'
+    });
+    document.getElementById('history-pagination').innerHTML = '';
+    return;
+  }
+  const { slice, totalPages } = paginate(data, HISTORY_PAGE, PAGE_SIZE);
+  list.innerHTML = slice.map(b => renderHistoryCard(b, HISTORY_KIND)).join('');
+  renderPagination(totalPages);
+  syncPendingPayments(slice, () => HISTORY_KIND);
+}
+
+// Shared between Home's active-booking card and Booking history: does this
+// booking still need a GCash payment, and for how much? Booking creation
+// never charges GCash itself — it's a separate step the customer takes here
+// (Home) or in Booking history, whenever they're ready. Transport's fare is
+// known at booking time (estimated_fare); food/parcel only becomes payable
+// once the rider confirms the real price at pickup (final_fare).
+function paymentDue(b, kind) {
+  const payable = kind === 'transport' ? b.estimated_fare : b.final_fare;
+  const needsPay = b.payment_method === 'gcash'
+    && ['pending', 'failed'].includes(b.payment_status)
+    && !['cancelled', 'expired', 'no_show'].includes(b.status)
+    && Number(payable) > 0;
+  return { needsPay, payable };
+}
+
+function renderHistoryCard(b, kind) {
+  const title = kind === 'transport' ? `${b.pickup_address} → ${b.destination_address}`
+    : kind === 'food' ? b.restaurant_name
+    : `${b.sender_name} → ${b.receiver_name}`;
+  const sub = kind === 'transport'
+    ? (b.scheduled_for && b.status === 'pending' ? `Scheduled for ${formatDate(b.scheduled_for)}` : formatDate(b.created_at))
+    : kind === 'food' ? `${b.pickup_address} → ${b.delivery_address}`
+    : `${b.parcel_size || ''} · ${formatDate(b.created_at)}`;
+  const fare = b.final_fare ?? b.estimated_fare;
+  const canCancel = ['pending', 'accepted'].includes(b.status);
+  const canRate = b.status === 'completed' && !b.rating;
+  const { needsPay: needsPaymentRetry, payable } = paymentDue(b, kind);
+
+  const actions = [
+    needsPaymentRetry && `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); retryPayment('${b.id}','${kind}')"><i class="fa-solid fa-mobile-screen-button"></i> Pay ${peso(payable)}</button>`,
+    canCancel && `<button class="btn btn-outline btn-sm btn-danger-ghost" onclick="event.stopPropagation(); cancelBooking('${kind}','${b.id}')"><i class="fa-solid fa-xmark"></i> Cancel</button>`,
+    canRate && `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openRateModal('${kind}','${b.id}')"><i class="fa-solid fa-star"></i> Rate rider</button>`,
+  ].filter(Boolean).join('');
+
+  return bookingCardHTML({
+    kind, id: b.id, iconBg: COLOR_BY_KIND[kind], icon: ICON_BY_KIND[kind],
+    title, sub, fare, status: b.status,
+    footLeft: paymentBadge(b),
+    actions,
+  });
+}
+
+function paymentBadge(b) {
+  if (b.payment_method === 'cash') return '';
+  // 'card' can still appear on bookings made before card checkout was removed.
+  const label = { gcash: 'GCash', wallet: 'Wallet', card: 'Card' }[b.payment_method] || b.payment_method;
+  const cls = { paid: 'badge--completed', failed: 'badge--cancelled', pending: 'badge--pending' }[b.payment_status] || 'badge--pending';
+  return `<span class="badge ${cls}">${label} · ${b.payment_status}</span>`;
+}
+
+async function retryPayment(bookingId, kind = 'transport') {
+  // Re-read the row: create-payment charges whatever the booking says now
+  // (final_fare for food/parcel once the rider set it, else the estimate).
+  const table = TABLE_BY_KIND[kind];
+  const { data: b, error } = await supabase.from(table).select('*').eq('id', bookingId).single();
+  if (error || !b) { toast('Could not load that booking.', 'error'); return; }
+
+  const amount = kind === 'transport' ? b.estimated_fare : (b.final_fare ?? b.estimated_fare);
+  if (!amount) { toast('The rider hasn\'t confirmed the fare yet.', 'error'); return; }
+
+  const rows = kind === 'transport'
+    ? [['Payment method', 'GCash'], ['Pickup', b.pickup_address], ['Destination', b.destination_address],
+       ['Distance', b.distance_km ? Number(b.distance_km).toFixed(1) + ' km' : '—']]
+    : kind === 'food'
+      ? [['Payment method', 'GCash'], ['Restaurant', b.restaurant_name], ['Deliver to', b.delivery_address]]
+      : [['Payment method', 'GCash'], ['To', b.receiver_name], ['Drop-off', b.receiver_address]];
+
+  openGcashConfirm({ bookingType: kind, bookingId, amount, rows });
+}
+
+function renderPagination(totalPages) {
+  const el = document.getElementById('history-pagination');
+  if (totalPages <= 1) { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <button ${HISTORY_PAGE === 1 ? 'disabled' : ''} onclick="changeHistoryPage(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+    <span>Page ${HISTORY_PAGE} of ${totalPages}</span>
+    <button ${HISTORY_PAGE === totalPages ? 'disabled' : ''} onclick="changeHistoryPage(1)"><i class="fa-solid fa-chevron-right"></i></button>`;
+}
+function changeHistoryPage(delta) { HISTORY_PAGE += delta; loadHistory(); }
+
+async function cancelBooking(kind, id) {
+  const table = TABLE_BY_KIND[kind];
+  // A rider already accepting is exactly the case the DB records a
+  // cancellation fee for (sql/010) — warn about it before they confirm,
+  // using the real configured amount rather than a guessed number.
+  const { data: b } = await supabase.from(table).select('status').eq('id', id).single();
+  let message = 'Cancel this booking?';
+  if (b?.status === 'accepted') {
+    const { data: cfg } = await supabase.from('platform_config').select('cancellation_fee').single();
+    message = cfg?.cancellation_fee
+      ? `A rider has already accepted — cancelling now may incur a ${peso(cfg.cancellation_fee)} cancellation fee. Cancel anyway?`
+      : 'A rider has already accepted this booking. Cancel anyway?';
+  }
+  if (!confirm(message)) return;
+
+  const { error } = await supabase.from(table).update({ status: 'cancelled', cancelled_reason: 'Cancelled by customer' }).eq('id', id);
+  if (error) { toast(error.message, 'error'); return; }
+  toast('Booking cancelled.', 'success');
+  loadHome();
+  loadHistory();
+}
+
+// ---- rating modal ----------------------------------------------------------
+let selectedStars = 0;
+function openRateModal(kind, id) {
+  RATING_TARGET = { kind, id };
+  selectedStars = 0;
+  document.querySelectorAll('#star-input i').forEach(i => i.classList.remove('active'));
+  document.getElementById('rate-comment').value = '';
+  const tipInput = document.getElementById('rate-tip');
+  if (tipInput) tipInput.value = '';
+  document.getElementById('rate-modal').classList.add('open');
+}
+function closeRateModal() { document.getElementById('rate-modal').classList.remove('open'); }
+function wireStarInput() {
+  document.querySelectorAll('#star-input i').forEach(star => {
+    star.addEventListener('click', () => {
+      selectedStars = Number(star.dataset.val);
+      document.querySelectorAll('#star-input i').forEach(i => i.classList.toggle('active', Number(i.dataset.val) <= selectedStars));
+    });
+  });
+  document.getElementById('submit-rating').addEventListener('click', async () => {
+    if (!selectedStars) { toast('Please select a star rating.', 'error'); return; }
+    const table = TABLE_BY_KIND[RATING_TARGET.kind];
+    const comment = document.getElementById('rate-comment').value.trim();
+    const tipRaw = parseFloat(document.getElementById('rate-tip')?.value);
+    const tip = tipRaw > 0 ? Math.round(tipRaw * 100) / 100 : null;
+
+    const payload = { rating: selectedStars, review: comment };
+    if (tip) payload.tip_amount = tip; // omitted entirely when there's no tip — the trigger rejects tip_amount <= 0
+
+    const { data: booking } = await supabase.from(table).select('rider_id').eq('id', RATING_TARGET.id).single();
+    const { error } = await supabase.from(table).update(payload).eq('id', RATING_TARGET.id);
+    if (error) { toast(error.message, 'error'); return; }
+    if (booking?.rider_id) {
+      await supabase.from('reviews').insert({
+        customer_id: CURRENT_PROFILE.id, rider_id: booking.rider_id,
+        booking_type: RATING_TARGET.kind, booking_id: RATING_TARGET.id,
+        rating: selectedStars, comment
+      });
+    }
+    toast(tip ? `Thanks for rating your rider — don't forget the ${peso(tip)} tip!` : 'Thanks for rating your rider!', 'success');
+    closeRateModal();
+    loadHistory();
+  });
+}
+
+// ---- support / refund / dispute requests ----------------------------------
+let SUPPORT_REQUEST_TARGET = null; // { kind, id } when opened from a specific booking, else null
+
+function openSupportRequestModal(bookingRef) {
+  SUPPORT_REQUEST_TARGET = bookingRef || null;
+  const context = document.getElementById('support-request-context');
+  if (SUPPORT_REQUEST_TARGET) {
+    context.textContent = `About your ${SUPPORT_REQUEST_TARGET.kind} booking #${SUPPORT_REQUEST_TARGET.id.slice(0, 8)}.`;
+    context.style.display = '';
+  } else {
+    context.style.display = 'none';
+  }
+  document.getElementById('support-category').value = 'refund';
+  document.getElementById('support-subject').value = '';
+  document.getElementById('support-message').value = '';
+  document.getElementById('support-request-modal').classList.add('open');
+}
+function closeSupportRequestModal() { document.getElementById('support-request-modal').classList.remove('open'); }
+
+function wireSupportRequestForm() {
+  document.getElementById('submit-support-request').addEventListener('click', async () => {
+    const btn = document.getElementById('submit-support-request');
+    const category = document.getElementById('support-category').value;
+    const subject = document.getElementById('support-subject').value.trim();
+    const message = document.getElementById('support-message').value.trim();
+    if (!requireFields({ Subject: subject, Details: message })) return;
+
+    setLoading(btn, true);
+    const { error } = await supabase.from('support_requests').insert({
+      customer_id: CURRENT_PROFILE.id,
+      booking_type: SUPPORT_REQUEST_TARGET?.kind || null,
+      booking_id: SUPPORT_REQUEST_TARGET?.id || null,
+      category, subject, message,
+    });
+    setLoading(btn, false);
+    if (error) { toast(error.message, 'error'); return; }
+    toast("Sent! We'll get back to you soon.", 'success');
+    closeSupportRequestModal();
+  });
+}
+
+// ---- wallet -------------------------------------------------------------
+async function loadWalletBalance() {
+  const [{ data: wallet }, { data: txns }] = await Promise.all([
+    supabase.from('wallets').select('balance').eq('customer_id', CURRENT_PROFILE.id).maybeSingle(),
+    supabase.from('wallet_transactions').select('*').eq('customer_id', CURRENT_PROFILE.id).order('created_at', { ascending: false }).limit(5),
+  ]);
+  window.WALLET_BALANCE = Number(wallet?.balance || 0);
+  const balEl = document.getElementById('wallet-balance');
+  if (balEl) balEl.textContent = peso(window.WALLET_BALANCE);
+
+  const listEl = document.getElementById('wallet-txn-list');
+  if (!listEl) return;
+  if (!txns || txns.length === 0) {
+    listEl.innerHTML = `<p style="color:var(--text-muted);font-size:0.82rem">No wallet activity yet.</p>`;
+    return;
+  }
+  listEl.innerHTML = txns.map(t => `
+    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:0.85rem">
+      <span>${escapeHtml(walletTxnLabel(t.type))} · ${formatDate(t.created_at)}</span>
+      <span style="color:${Number(t.amount) >= 0 ? 'var(--green)' : 'var(--text-muted)'};font-weight:600">${Number(t.amount) >= 0 ? '+' : ''}${peso(t.amount)}</span>
+    </div>`).join('');
+}
+function walletTxnLabel(type) {
+  return { topup: 'Top-up', payment: 'Booking payment', refund: 'Refund', referral_bonus: 'Referral bonus', admin_adjustment: 'Adjustment' }[type] || type;
+}
+
+// ---- referrals ------------------------------------------------------------
+async function loadReferralInfo() {
+  const { data } = await supabase.from('profiles').select('referral_code, referred_by').eq('id', CURRENT_PROFILE.id).single();
+  if (!data) return;
+  const codeEl = document.getElementById('referral-code');
+  if (codeEl) codeEl.textContent = data.referral_code || '——————';
+
+  const form = document.getElementById('referral-redeem-form');
+  const note = document.getElementById('referral-redeemed-note');
+  if (data.referred_by) {
+    if (form) form.style.display = 'none';
+    if (note) note.style.display = '';
+  } else {
+    if (form) form.style.display = '';
+    if (note) note.style.display = 'none';
+  }
+}
+function wireReferralCard() {
+  const copyBtn = document.getElementById('referral-copy-btn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      const code = document.getElementById('referral-code').textContent.trim();
+      if (!code || code === '——————') return;
+      try {
+        await navigator.clipboard.writeText(code);
+        toast('Referral code copied.', 'success');
+      } catch {
+        toast(code, 'info');
+      }
+    });
+  }
+  const form = document.getElementById('referral-redeem-form');
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('referral-redeem-submit');
+      const code = document.getElementById('referral-redeem-code').value.trim();
+      if (!code) return;
+      setLoading(btn, true);
+      const { data, error } = await supabase.functions.invoke('apply-referral-code', { body: { code } });
+      setLoading(btn, false);
+      if (error || data?.error) { toast(data?.error || 'Could not redeem that code.', 'error'); return; }
+      toast(`Redeemed! ₱${Number(data.bonus).toFixed(2)} added to your wallet.`, 'success');
+      form.reset();
+      await loadReferralInfo();
+      await loadWalletBalance();
+    });
+  }
+}
+
+function wireWalletTopupForm() {
+  const form = document.getElementById('wallet-topup-form');
+  if (!form) return;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('wallet-topup-submit');
+    const amount = parseFloat(document.getElementById('wallet-topup-amount').value);
+    if (!(amount > 0)) { toast('Enter an amount greater than zero.', 'error'); return; }
+    setLoading(btn, true);
+    const { data, error } = await supabase.functions.invoke('wallet-topup', { body: { amount } });
+    setLoading(btn, false);
+    if (error || data?.error) { toast(data?.error || 'Could not start top-up.', 'error'); return; }
+    toast('Redirecting to GCash…', 'info');
+    window.location.href = data.checkout_url;
+  });
+}
+
+// ---- notifications ----------------------------------------------------------
+async function loadNotifications() {
+  const list = document.getElementById('notif-list');
+  showSkeleton(list, skeletonList(3));
+  const { data, error } = await supabase.from('notifications').select('*').eq('user_id', CURRENT_PROFILE.id).order('created_at', { ascending: false }).limit(30);
+  if (error || !data || data.length === 0) {
+    list.innerHTML = error
+      ? emptyState({
+          icon: 'fa-triangle-exclamation',
+          title: 'Could not load notifications',
+          body: error.message,
+          tone: 'error'
+        })
+      : emptyState({
+          icon: 'fa-bell-slash',
+          title: 'No notifications yet',
+          body: "We'll let you know here when there's an update on a booking."
+        });
+    setNotifCount(0);
+    return;
+  }
+  const unread = data.filter(n => !n.is_read).length;
+  setNotifCount(unread);
+
+  list.innerHTML = data.map(n => `
+    <div class="notif-item ${n.is_read ? 'read' : ''}">
+      <span class="dot"></span>
+      <div style="flex:1">
+        <h4>${escapeHtml(n.title)}</h4>
+        <p>${escapeHtml(n.message)}</p>
+        <time>${formatDate(n.created_at)}</time>
+      </div>
+    </div>`).join('');
+
+  supabase.from('notifications').update({ is_read: true }).eq('user_id', CURRENT_PROFILE.id).eq('is_read', false).then(() => {});
+}
+
+// ---- profile ----
+// populateProfileForm() and wireProfileForm() are in js/dashboard-common.js.
+
+// ---- realtime: refresh history/notifications when rows change --------------
+function subscribeRealtime() {
+  supabase.channel('customer-updates')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_bookings', filter: `customer_id=eq.${CURRENT_PROFILE.id}` }, () => { loadHome(); if (HISTORY_KIND === 'transport') loadHistory(); })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'food_deliveries', filter: `customer_id=eq.${CURRENT_PROFILE.id}` }, () => { loadHome(); if (HISTORY_KIND === 'food') loadHistory(); })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'parcel_deliveries', filter: `customer_id=eq.${CURRENT_PROFILE.id}` }, () => { loadHome(); if (HISTORY_KIND === 'parcel') loadHistory(); })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${CURRENT_PROFILE.id}` }, () => loadNotifications())
+    .subscribe();
+}

@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 import '../constants/map_config.dart';
+import '../utils/app_log.dart';
 
 final geocodingServiceProvider = Provider<GeocodingService>((ref) {
   final service = GeocodingService();
@@ -69,7 +70,8 @@ class GeocodingService {
       final json = jsonDecode(body) as Map<String, dynamic>;
       final name = json['display_name'] as String?;
       return (name == null || name.isEmpty) ? null : name;
-    } catch (_) {
+    } catch (e, s) {
+      AppLog.warn('reverseGeocode: bad Nominatim response', e, s);
       return null;
     }
   }
@@ -104,7 +106,8 @@ class GeocodingService {
         results.add(PlaceResult(displayName: name, point: LatLng(lat, lon)));
       }
       return results;
-    } catch (_) {
+    } catch (e, s) {
+      AppLog.warn('searchPlaces: bad Nominatim response', e, s);
       return const [];
     }
   }
@@ -118,7 +121,8 @@ class GeocodingService {
           .timeout(MapConfig.networkTimeout);
       if (response.statusCode != 200) return null;
       return utf8.decode(response.bodyBytes);
-    } catch (_) {
+    } catch (e, s) {
+      AppLog.warn('Nominatim request failed: $uri', e, s);
       return null;
     }
   }

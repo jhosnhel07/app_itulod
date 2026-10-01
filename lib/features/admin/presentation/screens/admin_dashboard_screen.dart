@@ -2,6 +2,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
+import '../../../../shared/screens/profile_screen.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/avatar_widget.dart';
 import '../../../../shared/widgets/status_badge.dart';
@@ -19,6 +20,11 @@ class AdminDashboardScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Admin Console'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: 'Edit profile',
+            onPressed: () => _openProfile(context),
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () => ref.read(authNotifierProvider.notifier).signOut(),
@@ -45,6 +51,7 @@ class AdminDashboardScreen extends ConsumerWidget {
                       url: profile?.avatarUrl,
                       radius: 28,
                       ring: true,
+                      onTap: () => _openProfile(context),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -64,6 +71,12 @@ class AdminDashboardScreen extends ConsumerWidget {
                           const StatusBadge(status: 'System Admin'),
                         ],
                       ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right_rounded,
+                          color: Colors.white70),
+                      tooltip: 'Edit profile',
+                      onPressed: () => _openProfile(context),
                     ),
                   ],
                 ),
@@ -87,7 +100,14 @@ class AdminDashboardScreen extends ConsumerWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 20),
+              AppButton(
+                text: 'Edit Profile',
+                type: AppButtonType.outline,
+                icon: Icons.edit_outlined,
+                onPressed: () => _openProfile(context),
+              ),
+              const SizedBox(height: 12),
               AppButton(
                 text: 'Sign Out',
                 type: AppButtonType.outline,
@@ -95,6 +115,17 @@ class AdminDashboardScreen extends ConsumerWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _openProfile(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: const Text('My Profile')),
+          body: const ProfileScreen(),
         ),
       ),
     );

@@ -1,1 +1,11 @@
 project_id = "ajzlvrvqpggnnwerahhq"
+
+# paymongo-redirect and paymongo-webhook are hit by PayMongo/browsers directly
+# (no Supabase session), so they must not require a Supabase JWT. Without
+# this, a plain `functions deploy` (no --no-verify-jwt flag) re-enables
+# platform-level auth and both start rejecting every real caller with 401.
+[functions.paymongo-redirect]
+verify_jwt = false
+
+[functions.paymongo-webhook]
+verify_jwt = false

@@ -12,6 +12,7 @@ import '../../../../core/services/geocoding_service.dart';
 import '../../../../core/services/location_service.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/map_widgets.dart';
+import '../providers/saved_addresses_provider.dart';
 
 /// What the picker hands back: where the pin was, and what that place is called.
 class PickedPlace {
@@ -395,6 +396,63 @@ class _MapPickerScreenState extends ConsumerState<MapPickerScreen> {
                 ),
               ),
             ),
+          ] else if (_searchController.text.isEmpty) ...[
+            Consumer(
+              builder: (context, ref, child) {
+                final savedAsync = ref.watch(savedAddressesProvider);
+                return savedAsync.when(
+                  data: (saved) {
+                    if (saved.isEmpty) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Material(
+                        elevation: 3,
+                        borderRadius: BorderRadius.circular(12),
+                        color: Colors.white,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 260),
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            padding: EdgeInsets.zero,
+                            itemCount: saved.length,
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 1, color: AppColors.neutral100),
+                            itemBuilder: (_, i) {
+                              final addr = saved[i];
+                              return ListTile(
+                                dense: true,
+                                leading: const Icon(Icons.star_rounded,
+                                    size: 18, color: AppColors.primary),
+                                title: Text(
+                                  addr.label,
+                                  style: AppTypography.bodyBold.copyWith(fontSize: 13),
+                                ),
+                                subtitle: Text(
+                                  addr.address,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTypography.caption.copyWith(fontSize: 11),
+                                ),
+                                onTap: () {
+                                  _searchFocus.unfocus();
+                                  _userChosePlace = true;
+                                  _mapController.move(addr.point, MapConfig.pickerZoom);
+                                  _center = addr.point;
+                                  _address = addr.address;
+                                  setState(() {});
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, __) => const SizedBox.shrink(),
+                );
+              },
+            ),
           ],
         ],
       ),
@@ -470,10 +528,26 @@ class _MapPickerScreenState extends ConsumerState<MapPickerScreen> {
                             ),
                     ),
                     const SizedBox(height: 12),
-                    AppButton(
-                      text: 'Confirm location',
-                      icon: Icons.check_rounded,
-                      onPressed: _confirm,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: AppButton(
+                            text: 'Confirm location',
+                            icon: Icons.check_rounded,
+                            onPressed: _confirm,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        IconButton(
+                          onPressed: () => _promptSaveAddress(context),
+                          icon: const Icon(Icons.star_outline_rounded),
+                          tooltip: 'Save location',
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppColors.primary50,
+                            foregroundColor: AppColors.primary,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -483,5 +557,50 @@ class _MapPickerScreenState extends ConsumerState<MapPickerScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _promptSaveAddress(BuildContext context) async {
+    final labelController = TextEditingController();
+    final address = _address ?? _coordinateLabel;
+    
+    final label = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Save Address'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(address, style: AppTypography.caption, maxLines: 2, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 16),
+            TextField(
+              controller: labelController,
+              decoration: const InputDecoration(
+                labelText: 'Label (e.g. Home, Work)',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, labelController.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (label != null && label.trim().isNotEmpty && mounted) {
+      await ref.read(savedAddressesProvider.notifier).add(
+        label.trim(),
+        address,
+        _center.latitude,
+        _center.longitude,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Address saved')));
+    }
   }
 }

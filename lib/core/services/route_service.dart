@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 import '../constants/map_config.dart';
+import '../utils/app_log.dart';
 
 final routeServiceProvider = Provider<RouteService>((ref) {
   final service = RouteService();
@@ -38,9 +39,14 @@ class RouteService {
   void dispose() => _client.close();
 
   Future<RouteResult?> fetchRoute(LatLng from, LatLng to) async {
+    return fetchRouteWaypoints([from, to]);
+  }
+
+  Future<RouteResult?> fetchRouteWaypoints(List<LatLng> waypoints) async {
+    if (waypoints.length < 2) return null;
+    
     // OSRM takes lon,lat — the reverse of LatLng's order.
-    final coords = '${from.longitude},${from.latitude};'
-        '${to.longitude},${to.latitude}';
+    final coords = waypoints.map((w) => '${w.longitude},${w.latitude}').join(';');
     final uri = Uri.parse('${MapConfig.osrmBase}/route/v1/driving/$coords')
         .replace(queryParameters: {
       'overview': 'full',
@@ -79,7 +85,8 @@ class RouteService {
         duration: Duration(seconds: seconds.round()),
         points: points,
       );
-    } catch (_) {
+    } catch (e, s) {
+      AppLog.warn('fetchRoute: OSRM request failed', e, s);
       return null;
     }
   }

@@ -1,4 +1,4 @@
-﻿enum UserRole {
+enum UserRole {
   customer,
   rider,
   admin;
@@ -37,6 +37,10 @@ class ProfileModel {
   final bool isActive;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final int loyaltyPoints;
+  final String? referralCode;
+  final String? referredBy;
+  final double floatAmount;
 
   const ProfileModel({
     required this.id,
@@ -48,6 +52,10 @@ class ProfileModel {
     this.isActive = true,
     this.createdAt,
     this.updatedAt,
+    this.loyaltyPoints = 0,
+    this.referralCode,
+    this.referredBy,
+    this.floatAmount = 0.0,
   });
 
   factory ProfileModel.fromJson(Map<String, dynamic> json) {
@@ -61,6 +69,10 @@ class ProfileModel {
       isActive: json['is_active'] as bool? ?? true,
       createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'] as String) : null,
       updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'] as String) : null,
+      loyaltyPoints: json['loyalty_points'] as int? ?? 0,
+      referralCode: json['referral_code'] as String?,
+      referredBy: json['referred_by'] as String?,
+      floatAmount: (json['float_amount'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
@@ -88,6 +100,9 @@ class ProfileModel {
     bool? isActive,
     DateTime? createdAt,
     DateTime? updatedAt,
+    int? loyaltyPoints,
+    String? referralCode,
+    double? floatAmount,
   }) {
     return ProfileModel(
       id: id ?? this.id,
@@ -99,6 +114,10 @@ class ProfileModel {
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      loyaltyPoints: loyaltyPoints ?? this.loyaltyPoints,
+      referralCode: referralCode ?? this.referralCode,
+      referredBy: referredBy ?? this.referredBy,
+      floatAmount: floatAmount ?? this.floatAmount,
     );
   }
 }
