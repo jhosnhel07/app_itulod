@@ -29,6 +29,24 @@ class RestaurantRepository {
     }
   }
 
+  /// Every available dish name keyed by restaurant id, for "search by dish".
+  /// Paged because PostgREST caps a response at 1000 rows.
+  Future<Map<String, List<String>>> getDishIndex() async {
+    final index = <String, List<String>>{};
+    for (var from = 0;; from += 1000) {
+      final rows = await _client
+          .from('menu_items')
+          .select('restaurant_id, name')
+          .eq('is_available', true)
+          .range(from, from + 999);
+      for (final row in rows) {
+        (index[row['restaurant_id'] as String] ??= []).add(row['name'] as String);
+      }
+      if (rows.length < 1000) break;
+    }
+    return index;
+  }
+
   Future<List<MenuItemModel>> getMenuItems(String restaurantId) async {
     try {
       final response = await _client

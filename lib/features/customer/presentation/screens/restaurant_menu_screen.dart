@@ -4,6 +4,7 @@ import '../../../../shared/models/restaurant_models.dart';
 import '../../data/restaurant_repository.dart';
 import '../providers/cart_provider.dart';
 import '../../../../core/constants/app_typography.dart';
+import '../../../../core/utils/formatters.dart';
 import 'food_cart_screen.dart';
 
 class RestaurantMenuScreen extends ConsumerStatefulWidget {
@@ -47,6 +48,28 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
     }
   }
 
+  /// A cart holds one restaurant's order. Adding from a different one clears
+  /// it — confirm first, like the web's selectRestaurantForMenu().
+  Future<void> _addToCart(MenuItemModel item) async {
+    final cart = ref.read(cartProvider);
+    final other = cart.restaurant;
+    if (other != null && other.id != widget.restaurant.id && cart.items.isNotEmpty) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Start a new order?'),
+          content: Text('Switching restaurants clears your current order from ${other.name}.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep it')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continue')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+    ref.read(cartProvider.notifier).addItem(widget.restaurant, item);
+  }
+
   @override
   Widget build(BuildContext context) {
     final cartState = ref.watch(cartProvider);
@@ -63,9 +86,12 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
                     final item = _menuItems![index];
                     final cartItem = cartState.items[item.id];
                     
+                    final description = item.description?.trim() ?? '';
                     return ListTile(
                       title: Text(item.name, style: AppTypography.bodyBold),
-                      subtitle: Text('\$${item.price.toStringAsFixed(2)}\n${item.description ?? ""}'),
+                      subtitle: Text(description.isEmpty
+                          ? Formatters.currency(item.price)
+                          : '${Formatters.currency(item.price)}\n$description'),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -80,9 +106,7 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
                           ],
                           IconButton(
                             icon: const Icon(Icons.add_circle_outline),
-                            onPressed: () {
-                              ref.read(cartProvider.notifier).addItem(widget.restaurant, item);
-                            },
+                            onPressed: () => _addToCart(item),
                           ),
                         ],
                       ),
@@ -99,7 +123,7 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
                       MaterialPageRoute(builder: (_) => const FoodCartScreen()),
                     );
                   },
-                  child: Text('View Cart (${cartState.totalItems}) - \$${cartState.totalPrice.toStringAsFixed(2)}'),
+                  child: Text('View Cart (${cartState.totalItems}) - ${Formatters.currency(cartState.totalPrice)}'),
                 ),
               ),
             )

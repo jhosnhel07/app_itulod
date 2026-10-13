@@ -11,6 +11,7 @@ import '../../../../shared/widgets/app_button.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/customer_repository.dart';
 import '../providers/cart_provider.dart';
+import '../providers/saved_addresses_provider.dart';
 import '../widgets/location_picker_field.dart';
 import '../widgets/payment_method_selector.dart';
 import 'map_picker_screen.dart';
@@ -38,6 +39,31 @@ class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
   /// the straight-line / address estimate stands in.
   double? _routeKm;
   int _routeToken = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Start from the "Deliver to" chosen on the restaurant list (or the first
+    // saved address with a pin, the same default that list used).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _deliveryPoint != null) return;
+      var place = ref.read(foodDeliverToProvider);
+      if (place == null) {
+        for (final a in ref.read(savedAddressesProvider).valueOrNull ?? const []) {
+          if (a.hasLocation) {
+            place = PickedPlace(point: a.point, address: a.address);
+            break;
+          }
+        }
+      }
+      if (place == null) return;
+      setState(() {
+        _deliveryPoint = place!.point;
+        _addressController.text = place.address;
+      });
+      _refreshRoute();
+    });
+  }
 
   @override
   void dispose() {
@@ -76,6 +102,7 @@ class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
       initialAddress: _addressController.text.trim().isEmpty ? null : _addressController.text,
     );
     if (picked == null || !mounted) return;
+    ref.read(foodDeliverToProvider.notifier).state = picked;
     setState(() {
       _deliveryPoint = picked.point;
       _addressController.text = picked.address;

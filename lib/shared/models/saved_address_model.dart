@@ -8,12 +8,17 @@ class SavedAddressModel {
   final String address;
   final LatLng point;
 
+  /// False for older rows saved without a map pin — [point] is then only the
+  /// map's default centre, so it must not be used for distances.
+  final bool hasLocation;
+
   const SavedAddressModel({
     required this.id,
     required this.userId,
     required this.label,
     required this.address,
     required this.point,
+    this.hasLocation = true,
   });
 
   factory SavedAddressModel.fromJson(Map<String, dynamic> json) {
@@ -28,6 +33,7 @@ class SavedAddressModel {
         lat ?? MapConfig.defaultCenter.latitude,
         lng ?? MapConfig.defaultCenter.longitude,
       ),
+      hasLocation: lat != null && lng != null,
     );
   }
 

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../shared/models/restaurant_models.dart';
+import '../screens/map_picker_screen.dart' show PickedPlace;
 
 class CartItem {
   final MenuItemModel menuItem;
@@ -80,3 +81,7 @@ class CartNotifier extends StateNotifier<CartState> {
 final cartProvider = StateNotifierProvider<CartNotifier, CartState>((ref) {
   return CartNotifier();
 });
+
+/// Where the food order goes, chosen on the restaurant list ("Deliver to").
+/// It sorts restaurants nearest-first there, and checkout starts from it.
+final foodDeliverToProvider = StateProvider<PickedPlace?>((ref) => null);
