@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../shared/models/restaurant_models.dart';
-import '../../data/restaurant_repository.dart';
-import '../providers/cart_provider.dart';
+import 'package:latlong2/latlong.dart';
+import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../../shared/models/restaurant_models.dart';
+import '../../data/restaurant_finder.dart';
+import '../../data/restaurant_repository.dart';
+import '../providers/cart_provider.dart';
+import 'book_food_screen.dart' show RestaurantLogoTile;
 import 'food_cart_screen.dart';
 
 class RestaurantMenuScreen extends ConsumerStatefulWidget {
@@ -73,61 +77,262 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
   @override
   Widget build(BuildContext context) {
     final cartState = ref.watch(cartProvider);
+    final r = widget.restaurant;
+    final town = restaurantTown(r);
+    final cats = restaurantCategories(r);
+    final visual = restaurantVisual(cats);
+    final deliverTo = ref.watch(foodDeliverToProvider);
+    final km = (deliverTo != null && r.hasLocation)
+        ? roadKm(deliverTo.point, LatLng(r.lat!, r.lng!))
+        : null;
+    final items = _menuItems ?? const <MenuItemModel>[];
+    final hasTypical = items.any((m) => (m.description ?? '').endsWith(typicalItemNote));
+    final cartIsHere = cartState.restaurant?.id == r.id;
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.restaurant.name)),
+      backgroundColor: AppColors.background,
+      appBar: AppBar(title: const Text('Menu')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _menuItems == null || _menuItems!.isEmpty
-              ? const Center(child: Text('No menu items available'))
-              : ListView.builder(
-                  itemCount: _menuItems!.length,
-                  itemBuilder: (context, index) {
-                    final item = _menuItems![index];
-                    final cartItem = cartState.items[item.id];
-                    
-                    final description = item.description?.trim() ?? '';
-                    return ListTile(
-                      title: Text(item.name, style: AppTypography.bodyBold),
-                      subtitle: Text(description.isEmpty
-                          ? Formatters.currency(item.price)
-                          : '${Formatters.currency(item.price)}\n$description'),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (cartItem != null && cartItem.quantity > 0) ...[
-                            IconButton(
-                              icon: const Icon(Icons.remove_circle_outline),
-                              onPressed: () {
-                                ref.read(cartProvider.notifier).removeItem(item.id);
-                              },
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              children: [
+                // ── Restaurant header ───────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppColors.surface, AppColors.primary50],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: AppColors.cardBorder),
+                  ),
+                  child: Row(
+                    children: [
+                      RestaurantLogoTile(
+                          imageUrl: r.imageUrl, bg: visual.bg, fg: visual.fg, icon: visual.icon, size: 64),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(restaurantDisplayName(r, town), style: AppTypography.h3),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 10,
+                              runSpacing: 4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                _pill(r.cuisineType ?? 'Restaurant'),
+                                _iconText(Icons.location_on_rounded, town),
+                                if (km != null) _iconText(Icons.route_rounded, '${km.toStringAsFixed(1)} km'),
+                              ],
                             ),
-                            Text('${cartItem.quantity}'),
+                            const SizedBox(height: 6),
+                            Text(r.address, style: AppTypography.caption.copyWith(fontSize: 12)),
                           ],
-                          IconButton(
-                            icon: const Icon(Icons.add_circle_outline),
-                            onPressed: () => _addToCart(item),
-                          ),
-                        ],
+                        ),
                       ),
-                    );
-                  },
+                    ],
+                  ),
                 ),
+                if (hasTypical) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.blush,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.info_outline_rounded, size: 16, color: AppColors.secondary),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Items marked TYPICAL are what this kind of place usually serves — '
+                            'your rider confirms availability and the final price at pickup.',
+                            style: AppTypography.caption.copyWith(fontSize: 12, color: AppColors.warmInk),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 14),
+                if (items.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 40),
+                    child: Center(child: Text('No menu items available', style: AppTypography.caption)),
+                  )
+                else
+                  for (final item in items) ...[
+                    _itemCard(item, cartIsHere ? (cartState.items[item.id]?.quantity ?? 0) : 0),
+                    const SizedBox(height: 10),
+                  ],
+              ],
+            ),
       bottomNavigationBar: cartState.totalItems > 0
           ? SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const FoodCartScreen()),
-                    );
-                  },
-                  child: Text('View Cart (${cartState.totalItems}) - ${Formatters.currency(cartState.totalPrice)}'),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: AppColors.primaryGradient,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: AppColors.primaryGlow,
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const FoodCartScreen()),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.22),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text('${cartState.totalItems}',
+                                  style: AppTypography.bodyBold.copyWith(color: Colors.white, fontSize: 13)),
+                            ),
+                            const SizedBox(width: 12),
+                            Text('View cart',
+                                style: AppTypography.bodyBold.copyWith(color: Colors.white, fontSize: 15)),
+                            const Spacer(),
+                            Text(Formatters.currency(cartState.totalPrice),
+                                style: AppTypography.bodyBold.copyWith(color: Colors.white, fontSize: 15)),
+                            const SizedBox(width: 6),
+                            const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             )
           : null,
+    );
+  }
+
+  Widget _itemCard(MenuItemModel item, int qty) {
+    final raw = item.description?.trim() ?? '';
+    final typical = raw.endsWith(typicalItemNote.trim()) || raw.endsWith(typicalItemNote);
+    final description = typical ? raw.substring(0, raw.length - typicalItemNote.length).trim() : raw;
+    final selected = qty > 0;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: selected ? AppColors.primary100 : AppColors.cardBorder, width: selected ? 1.5 : 1),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(item.name, style: AppTypography.bodyBold.copyWith(fontSize: 14.5)),
+                    if (typical)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppColors.secondary100,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text('TYPICAL',
+                            style: AppTypography.caption.copyWith(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                              color: AppColors.secondaryDark,
+                            )),
+                      ),
+                  ],
+                ),
+                if (description.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(description, style: AppTypography.caption.copyWith(fontSize: 12.5)),
+                ],
+                const SizedBox(height: 6),
+                Text(Formatters.currency(item.price),
+                    style: AppTypography.bodyBold.copyWith(color: AppColors.primaryDark, fontSize: 14.5)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            decoration: BoxDecoration(
+              color: selected ? AppColors.surface : AppColors.neutral50,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: selected ? AppColors.primary : AppColors.cardBorder),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _stepButton(Icons.remove_rounded, qty > 0
+                    ? () => ref.read(cartProvider.notifier).removeItem(item.id)
+                    : null),
+                SizedBox(
+                  width: 24,
+                  child: Text('$qty',
+                      textAlign: TextAlign.center,
+                      style: AppTypography.bodyBold.copyWith(fontSize: 14)),
+                ),
+                _stepButton(Icons.add_rounded, () => _addToCart(item)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _stepButton(IconData icon, VoidCallback? onTap) {
+    return InkWell(
+      customBorder: const CircleBorder(),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Icon(icon, size: 18, color: onTap == null ? AppColors.neutral300 : AppColors.primary),
+      ),
+    );
+  }
+
+  Widget _pill(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(color: AppColors.primary50, borderRadius: BorderRadius.circular(20)),
+      child: Text(text,
+          style: AppTypography.caption.copyWith(
+              fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primaryDark)),
+    );
+  }
+
+  Widget _iconText(IconData icon, String text) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: AppColors.secondary),
+        const SizedBox(width: 3),
+        Text(text, style: AppTypography.caption.copyWith(fontSize: 12)),
+      ],
     );
   }
 }

@@ -179,12 +179,45 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
   Widget build(BuildContext context) {
     final deliverTo = _deliverTo();
     return Scaffold(
-      appBar: AppBar(title: const Text('Food Delivery')),
+      backgroundColor: AppColors.background,
+      appBar: AppBar(title: const Text('Order Food')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : (_entries == null || _entries!.isEmpty)
               ? const Center(child: Text('No restaurants available'))
               : _body(deliverTo),
+    );
+  }
+
+  Future<void> _chooseTown(List<String> towns, Map<String, int> counts) async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.7),
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              ListTile(title: Text('Town', style: AppTypography.h3)),
+              _townTile(ctx, 'all', 'All of Ilocos Norte', counts.values.fold(0, (a, b) => a + b)),
+              for (final t in towns) _townTile(ctx, t, t, counts[t]!),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked != null) setState(() => _town = picked);
+  }
+
+  Widget _townTile(BuildContext ctx, String value, String label, int count) {
+    final selected = _town == value;
+    return ListTile(
+      leading: Icon(selected ? Icons.radio_button_checked : Icons.radio_button_off,
+          color: selected ? AppColors.primary : AppColors.neutral400),
+      title: Text(label, style: selected ? AppTypography.bodyBold : AppTypography.body),
+      trailing: _CountPill(count: count, active: false),
+      onTap: () => Navigator.pop(ctx, value),
     );
   }
 
@@ -196,8 +229,12 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
     }
     final towns = townCounts.keys.toList()..sort((a, b) => townCounts[b]!.compareTo(townCounts[a]!));
     final inTown = all.where((e) => _town == 'all' || e.town == _town).toList();
-    final present = foodCategories.where((c) => inTown.any((e) => e.cats.contains(c.id))).toList();
-    final category = present.any((c) => c.id == _category) ? _category : 'all';
+    final present = [
+      for (final c in foodCategories)
+        if (inTown.any((e) => e.cats.contains(c.id)))
+          (cat: c, count: inTown.where((e) => e.cats.contains(c.id)).length),
+    ];
+    final category = present.any((p) => p.cat.id == _category) ? _category : 'all';
 
     final words = _query.toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
     final rows = <({_Entry e, double? km, List<String> hits})>[];
@@ -222,89 +259,103 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: Row(
+        // ── Filter panel ──────────────────────────────────────────────────
+        Container(
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
+          ),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+          child: Column(
             children: [
-              Expanded(
-                flex: 3,
-                child: InkWell(
-                  onTap: _chooseDeliverTo,
-                  borderRadius: BorderRadius.circular(10),
-                  child: InputDecorator(
-                    decoration: const InputDecoration(
-                      labelText: 'Deliver to',
-                      prefixIcon: Icon(Icons.location_on_outlined),
-                      isDense: true,
-                    ),
-                    child: Text(
-                      deliverTo?.address ?? 'Anywhere — tap to set',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              TextField(
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search_rounded, color: AppColors.iconMuted),
+                  hintText: 'Search a restaurant or dish',
+                  isDense: true,
+                  filled: true,
+                  fillColor: AppColors.inputFill,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(28),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                textInputAction: TextInputAction.search,
+                onChanged: (v) => setState(() => _query = v),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: _SelectTile(
+                      icon: Icons.location_on_rounded,
+                      label: 'DELIVER TO',
+                      value: deliverTo?.address ?? 'Anywhere — tap to set',
+                      onTap: _chooseDeliverTo,
                     ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 2,
+                    child: _SelectTile(
+                      icon: Icons.map_rounded,
+                      label: 'TOWN',
+                      value: _town == 'all' ? 'All towns' : _town,
+                      onTap: () => _chooseTown(towns, townCounts),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: DropdownButtonFormField<String>(
-                  initialValue: _town,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Town', isDense: true),
-                  items: [
-                    const DropdownMenuItem(value: 'all', child: Text('All towns')),
-                    for (final t in towns)
-                      DropdownMenuItem(value: t, child: Text('$t (${townCounts[t]})', overflow: TextOverflow.ellipsis)),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 36,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    _chip('all', 'All', Icons.storefront_rounded, inTown.length, category),
+                    for (final p in present) _chip(p.cat.id, p.cat.label, p.cat.icon, p.count, category),
                   ],
-                  onChanged: (v) => setState(() => _town = v ?? 'all'),
                 ),
               ),
             ],
           ),
         ),
-        SizedBox(
-          height: 52,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        // ── Summary ───────────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 4),
+          child: Row(
             children: [
-              _chip('all', 'All', Icons.storefront_rounded, category),
-              for (final c in present) _chip(c.id, c.label, c.icon, category),
+              Text('${rows.length} place${rows.length == 1 ? '' : 's'}',
+                  style: AppTypography.bodyBold.copyWith(fontSize: 13.5)),
+              const Spacer(),
+              Icon(deliverTo != null ? Icons.near_me_rounded : Icons.sort_by_alpha_rounded,
+                  size: 14, color: AppColors.primary),
+              const SizedBox(width: 4),
+              Text(deliverTo != null ? 'Nearest first' : 'Sorted A–Z', style: AppTypography.caption),
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: TextField(
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search_rounded),
-              hintText: 'Search restaurant or dish (bagnet, milk tea…)',
-              isDense: true,
-            ),
-            textInputAction: TextInputAction.search,
-            onChanged: (v) => setState(() => _query = v),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              '${rows.length} place${rows.length == 1 ? '' : 's'}${deliverTo != null ? ' · nearest first' : ''}',
-              style: AppTypography.caption,
-            ),
-          ),
-        ),
+        // ── Results ───────────────────────────────────────────────────────
         Expanded(
           child: rows.isEmpty
               ? Center(
-                  child: Text('No matches — try another town, category or dish.',
-                      style: AppTypography.caption),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.search_off_rounded, size: 44, color: AppColors.primary100),
+                      const SizedBox(height: 8),
+                      Text('No matches', style: AppTypography.bodyBold),
+                      const SizedBox(height: 2),
+                      Text('Try another town, category or dish.', style: AppTypography.caption),
+                    ],
+                  ),
                 )
-              : ListView.builder(
-                  padding: const EdgeInsets.only(bottom: 16),
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 20),
                   itemCount: rows.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, i) => _card(rows[i].e, rows[i].km, rows[i].hits),
                 ),
         ),
@@ -312,18 +363,35 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
     );
   }
 
-  Widget _chip(String id, String label, IconData icon, String selected) {
+  Widget _chip(String id, String label, IconData icon, int count, String selected) {
     final active = id == selected;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        avatar: Icon(icon, size: 16, color: active ? Colors.white : AppColors.neutral600),
-        label: Text(label),
-        selected: active,
-        showCheckmark: false,
-        selectedColor: AppColors.primary,
-        labelStyle: TextStyle(color: active ? Colors.white : null, fontSize: 12.5),
-        onSelected: (_) => setState(() => _category = id),
+      child: Material(
+        color: active ? AppColors.primary : AppColors.surface,
+        shape: StadiumBorder(
+          side: BorderSide(color: active ? AppColors.primary : AppColors.cardBorder),
+        ),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: () => setState(() => _category = id),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                Icon(icon, size: 15, color: active ? Colors.white : AppColors.primary),
+                const SizedBox(width: 6),
+                Text(label,
+                    style: AppTypography.caption.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: active ? Colors.white : AppColors.neutral700,
+                    )),
+                const SizedBox(width: 6),
+                _CountPill(count: count, active: active),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -331,34 +399,216 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
   Widget _card(_Entry e, double? km, List<String> hits) {
     final r = e.r;
     final fee = km == null ? null : _cheapestFee(km);
-    final meta = [
-      r.cuisineType ?? 'Restaurant',
-      e.town,
-      if (km != null) '~${km.toStringAsFixed(1)} km',
-      if (fee != null) 'from ${Formatters.currency(fee)} delivery',
-    ].join(' · ');
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-      child: ListTile(
-        leading: r.imageUrl != null
-            ? Image.network(r.imageUrl!, width: 48, height: 48, fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Icon(Icons.storefront, size: 36))
-            : const Icon(Icons.storefront, size: 36),
-        title: Text(r.name, style: AppTypography.bodyBold),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(meta, style: AppTypography.caption),
-            if (hits.isNotEmpty)
-              Text('Has: ${hits.take(3).join(', ')}',
-                  style: AppTypography.caption.copyWith(color: AppColors.primary)),
-          ],
-        ),
-        trailing: const Icon(Icons.chevron_right_rounded),
+    final visual = restaurantVisual(e.cats);
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => RestaurantMenuScreen(restaurant: r)),
         ),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.cardBorder),
+          ),
+          child: Row(
+            children: [
+              RestaurantLogoTile(imageUrl: r.imageUrl, bg: visual.bg, fg: visual.fg, icon: visual.icon),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(restaurantDisplayName(r, e.town),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.bodyBold.copyWith(fontSize: 15)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _Tag(text: r.cuisineType ?? 'Restaurant'),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.location_on_rounded, size: 13, color: AppColors.secondary),
+                            const SizedBox(width: 2),
+                            Text(e.town, style: AppTypography.caption.copyWith(fontSize: 12)),
+                          ],
+                        ),
+                      ],
+                    ),
+                    if (hits.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text('🍴 ${hits.take(3).join(' · ')}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.caption.copyWith(color: AppColors.primary, fontSize: 12)),
+                    ],
+                  ],
+                ),
+              ),
+              if (km != null) ...[
+                const SizedBox(width: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text('${km < 10 ? km.toStringAsFixed(1) : km.round()} km',
+                        style: AppTypography.bodyBold.copyWith(fontSize: 14)),
+                    if (fee != null) ...[
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.success50,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text('${Formatters.currency(fee)} delivery',
+                            style: AppTypography.caption.copyWith(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF157A4D),
+                            )),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
+    );
+  }
+}
+
+/// Category-coloured square with an icon (or the restaurant's own image).
+class RestaurantLogoTile extends StatelessWidget {
+  final String? imageUrl;
+  final Color bg;
+  final Color fg;
+  final IconData icon;
+  final double size;
+
+  const RestaurantLogoTile({
+    super.key,
+    this.imageUrl,
+    required this.bg,
+    required this.fg,
+    required this.icon,
+    this.size = 52,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(size * 0.28);
+    final fallback = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(color: bg, borderRadius: radius),
+      child: Icon(icon, color: fg, size: size * 0.46),
+    );
+    if (imageUrl == null || imageUrl!.isEmpty) return fallback;
+    return ClipRRect(
+      borderRadius: radius,
+      child: Image.network(imageUrl!, width: size, height: size, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => fallback),
+    );
+  }
+}
+
+class _SelectTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  const _SelectTile({required this.icon, required this.label, required this.value, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.cardBorder),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: AppColors.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: AppTypography.caption.copyWith(
+                          fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.6)),
+                  Text(value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.bodyBold.copyWith(fontSize: 13)),
+                ],
+              ),
+            ),
+            const Icon(Icons.expand_more_rounded, size: 18, color: AppColors.iconMuted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Tag extends StatelessWidget {
+  final String text;
+
+  const _Tag({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.primary50,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(text,
+          style: AppTypography.caption.copyWith(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: AppColors.primaryDark,
+          )),
+    );
+  }
+}
+
+class _CountPill extends StatelessWidget {
+  final int count;
+  final bool active;
+
+  const _CountPill({required this.count, required this.active});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: active ? Colors.white.withValues(alpha: 0.22) : AppColors.neutral100,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text('$count',
+          style: AppTypography.caption.copyWith(
+            fontSize: 10.5,
+            color: active ? Colors.white : AppColors.neutral500,
+          )),
     );
   }
 }

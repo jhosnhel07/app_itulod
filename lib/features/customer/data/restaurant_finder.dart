@@ -102,3 +102,44 @@ Set<String> restaurantCategories(RestaurantModel r) {
   final hay = '${r.cuisineType ?? ''} ${r.name}';
   return {for (final c in foodCategories) if (c.match.hasMatch(hay)) c.id};
 }
+
+/// Tile colours for a restaurant's main category — same families as the
+/// web (brand blue / rose, plus warm and green tints; never status colours).
+({Color bg, Color fg, IconData icon}) restaurantVisual(Set<String> cats) {
+  FoodCategory? main;
+  for (final c in foodCategories) {
+    if (cats.contains(c.id)) {
+      main = c;
+      break;
+    }
+  }
+  const brown = (bg: Color(0xFFF3EBE6), fg: Color(0xFF7A5340));
+  const amber = (bg: Color(0xFFFBF1E1), fg: Color(0xFFA8661B));
+  const blue = (bg: Color(0xFFE3F2FD), fg: Color(0xFF2196F3));
+  const navy = (bg: Color(0xFFE3F2FD), fg: Color(0xFF0D47A1));
+  const rose = (bg: Color(0xFFFFF5F5), fg: Color(0xFFB06B79));
+  const roseDeep = (bg: Color(0xFFF7D6D0), fg: Color(0xFFA65A6B));
+  const green = (bg: Color(0xFFE9F8F0), fg: Color(0xFF157A4D));
+  final tint = switch (main?.id) {
+    'fastfood' => blue,
+    'ilocano' || 'chinese' => rose,
+    'empanada' || 'bakery' => amber,
+    'coffee' => brown,
+    'pizza' => roseDeep,
+    'chicken' || 'asian' => navy,
+    'grill' || 'meals' => green,
+    _ => (bg: const Color(0xFFF1F4F9), fg: const Color(0xFF6B7280)),
+  };
+  return (bg: tint.bg, fg: tint.fg, icon: main?.icon ?? Icons.storefront_rounded);
+}
+
+/// Name without a trailing "(Town)" — the town is shown separately. Branch
+/// details like "(Marcos Ave., Batac City)" are kept.
+String restaurantDisplayName(RestaurantModel r, String town) {
+  final suffix = ' ($town)';
+  return r.name.endsWith(suffix) ? r.name.substring(0, r.name.length - suffix.length) : r.name;
+}
+
+/// Seeded menus for places without a published menu end their descriptions
+/// with this note (sql/021) — shown as a "Typical" badge instead.
+const String typicalItemNote = ' · typical item, availability may vary';
