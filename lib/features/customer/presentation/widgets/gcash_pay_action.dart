@@ -7,52 +7,53 @@ import '../../../../core/utils/formatters.dart';
 import '../../../../shared/models/booking_models.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../data/customer_repository.dart';
+import '../providers/wallet_provider.dart';
 import '../screens/booking_receipt_screen.dart';
 import '../screens/gcash_checkout_screen.dart';
 import 'customer_bookings_tab.dart' show customerHistoryProvider;
 import 'customer_home_tab.dart' show customerHomeSummaryProvider;
 
-/// Starts (or retries) GCash checkout for a booking that still needs payment —
-/// shared by the Home tab's active booking card and My Bookings, the only two
-/// places a customer can pay for a booking after placing it.
-Future<void> payBookingWithGcash(
+/// Starts (or retries) online checkout for a booking that still needs payment —
+/// shared by the Home tab's active booking card and My Bookings.
+Future<void> payBookingOnline(
   BuildContext context,
   WidgetRef ref,
   BookingBase booking,
 ) async {
   final repo = ref.read(customerRepositoryProvider);
 
-  // Confirm the amount before handing off to GCash — the same "here's what
-  // you're about to be charged" step the web app shows.
-  final confirmed = await showModalBottomSheet<bool>(
+  // Confirm the amount before handing off
+  final method = await showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
     builder: (sheetContext) => _GcashConfirmSheet(booking: booking),
   );
-  if (confirmed != true || !context.mounted) return;
+  if (method == null || !context.mounted) return;
 
+  // create-payment charges whichever table booking_type names — final_fare
+  // for food/parcel once the rider confirmed it, the estimate for rides.
+  final bookingType = booking.kind.name;
   try {
-    final checkoutUrl = await repo.createGcashCheckoutUrl(booking.id);
-    if (!context.mounted) return;
-    final success = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => GcashCheckoutScreen(checkoutUrl: checkoutUrl)),
-    );
-    // Only transport bookings can be paid online, so this cast is safe.
-    if (context.mounted && success != null && booking is TransportBookingModel) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => BookingReceiptScreen(
-            booking: booking,
-            gcashPaid: success,
-            notifyOnDone: false,
-          ),
-        ),
+    if (method == 'wallet') {
+      await repo.payWithWallet(booking.id, bookingType: bookingType);
+      ref.invalidate(walletProvider);
+      if (!context.mounted) return;
+      await _showPaid(context, booking);
+    } else if (method == 'gcash') {
+      final checkoutUrl = await repo.createGcashCheckoutUrl(booking.id, bookingType: bookingType);
+      if (!context.mounted) return;
+      final success = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => GcashCheckoutScreen(checkoutUrl: checkoutUrl)),
       );
+      if (context.mounted && success == true) await _showPaid(context, booking);
     }
   } catch (e) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not start GCash payment: $e'), backgroundColor: AppColors.danger),
+        SnackBar(
+          content: Text('Payment failed: ${e.toString().replaceFirst('Exception: ', '')}'),
+          backgroundColor: AppColors.danger,
+        ),
       );
     }
   }
@@ -60,24 +61,57 @@ Future<void> payBookingWithGcash(
   ref.invalidate(customerHomeSummaryProvider);
 }
 
+/// Rides get the full receipt screen (it polls until the webhook settles);
+/// food/parcel just confirm — their status shows in My Bookings.
+Future<void> _showPaid(BuildContext context, BookingBase booking) async {
+  if (booking is TransportBookingModel) {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BookingReceiptScreen(
+          booking: booking,
+          gcashPaid: true,
+          notifyOnDone: false,
+        ),
+      ),
+    );
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Payment received — it will show as paid in My Bookings shortly.'),
+        backgroundColor: AppColors.success,
+      ),
+    );
+  }
+}
+
 /// "You're about to be charged ₱X with GCash" — the confirm step before the
 /// PayMongo hand-off, matching the web app's `openGcashConfirm` modal.
-class _GcashConfirmSheet extends StatelessWidget {
+class _GcashConfirmSheet extends ConsumerWidget {
   final BookingBase booking;
 
   const _GcashConfirmSheet({required this.booking});
 
   @override
-  Widget build(BuildContext context) {
-    final amount = booking.finalFare ?? booking.estimatedFare;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final amount = booking.payableAmount ?? 0.0;
+    final b = booking;
     final rows = <(String, String)>[
-      ('Payment method', 'GCash'),
-      if (booking is TransportBookingModel) ...[
-        ('Pickup', (booking as TransportBookingModel).pickupAddress),
-        ('Destination', (booking as TransportBookingModel).destinationAddress),
-      ] else
-        ('Booking', booking.routeLine),
+      ('Payment method', 'GCash / Wallet'),
+      if (b is TransportBookingModel) ...[
+        ('Pickup', b.pickupAddress),
+        ('Destination', b.destinationAddress),
+      ] else if (b is FoodDeliveryModel) ...[
+        ('Restaurant', b.restaurantName),
+        ('Deliver to', b.deliveryAddress),
+      ] else if (b is ParcelDeliveryModel) ...[
+        ('To', b.receiverName),
+        ('Drop-off', b.receiverAddress),
+      ],
     ];
+
+    final walletAsync = ref.watch(walletProvider);
+    final walletBalance = walletAsync.valueOrNull?.balance ?? 0.0;
+    final canUseWallet = walletBalance >= amount;
 
     return SafeArea(
       child: Padding(
@@ -100,7 +134,7 @@ class _GcashConfirmSheet extends StatelessWidget {
             Text('Confirm payment', style: AppTypography.h3),
             const SizedBox(height: 4),
             Text(
-              'You will be redirected to GCash to authorise this payment.',
+              'Choose your payment method for this booking.',
               style: AppTypography.caption,
             ),
             const SizedBox(height: 16),
@@ -151,15 +185,23 @@ class _GcashConfirmSheet extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             AppButton(
-              text: 'Pay ${Formatters.currency(amount)}',
+              text: 'Pay with GCash',
               icon: Icons.account_balance_wallet_rounded,
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () => Navigator.pop(context, 'gcash'),
             ),
+            if (canUseWallet) ...[
+              const SizedBox(height: 8),
+              AppButton(
+                text: 'Pay from Wallet (${Formatters.currency(walletBalance)})',
+                icon: Icons.account_balance_wallet_rounded,
+                onPressed: () => Navigator.pop(context, 'wallet'),
+              ),
+            ],
             const SizedBox(height: 8),
             AppButton(
               text: 'Cancel',
               type: AppButtonType.ghost,
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(context, null),
             ),
           ],
         ),

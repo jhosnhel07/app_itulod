@@ -1,15 +1,36 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/map_config.dart';
+import '../../../../core/utils/app_log.dart';
+import '../../../../shared/widgets/map_widgets.dart';
+import '../../data/customer_repository.dart';
 
-final onlineRidersProvider = StreamProvider.autoDispose<List<LatLng>>((ref) {
-  final supabase = Supabase.instance.client;
-  return supabase.from('online_riders').stream(primaryKey: ['rider_id']).map((rows) {
-    return rows.map((r) => LatLng(r['lat'] as double, r['lng'] as double)).toList();
+/// Online, approved, idle riders from `get_nearby_riders()` (sql/017),
+/// refreshed every 20 s — the same cadence as the web's
+/// startNearbyRidersWatch(). Positions are coarse (~110 m) by design.
+final nearbyRidersProvider = StreamProvider.autoDispose<List<LatLng>>((ref) {
+  final repo = ref.watch(customerRepositoryProvider);
+  final controller = StreamController<List<LatLng>>();
+
+  Future<void> poll() async {
+    try {
+      controller.add(await repo.fetchNearbyRiders());
+    } catch (e, s) {
+      AppLog.warn('get_nearby_riders failed', e, s);
+    }
+  }
+
+  poll();
+  final timer = Timer.periodic(const Duration(seconds: 20), (_) => poll());
+  ref.onDispose(() {
+    timer.cancel();
+    controller.close();
   });
+  return controller.stream;
 });
 
 class RidersNearYouMap extends ConsumerWidget {
@@ -17,7 +38,11 @@ class RidersNearYouMap extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final ridersAsync = ref.watch(onlineRidersProvider);
+    final riders = ref.watch(nearbyRidersProvider).valueOrNull ?? const <LatLng>[];
+    final center = riders.isNotEmpty ? riders.first : MapConfig.defaultCenter;
+    final label = riders.isEmpty
+        ? 'No riders online right now'
+        : '${riders.length} rider${riders.length == 1 ? '' : 's'} nearby';
 
     return Container(
       height: 200,
@@ -35,38 +60,39 @@ class RidersNearYouMap extends ConsumerWidget {
       child: Stack(
         children: [
           FlutterMap(
+            // Re-centre once the first riders arrive.
+            key: ValueKey(riders.isEmpty),
             options: MapOptions(
-              // Center on a default location, e.g. Manila, or use a Geolocator plugin if available
-              initialCenter: const LatLng(14.5995, 120.9842), 
+              initialCenter: center,
               initialZoom: 13,
+              minZoom: MapConfig.minZoom,
+              maxZoom: MapConfig.maxZoom,
               interactionOptions: const InteractionOptions(
                 flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
               ),
             ),
             children: [
-              TileLayer(
-                urlTemplate: MapConfig.tileUrl,
-                userAgentPackageName: MapConfig.userAgentPackageName,
-              ),
-              if (ridersAsync.hasValue)
-                MarkerLayer(
-                  markers: ridersAsync.value!.map((loc) {
-                    return Marker(
+              const OsmTileLayer(),
+              MarkerLayer(
+                markers: [
+                  for (final loc in riders)
+                    Marker(
                       point: loc,
-                      width: 32,
-                      height: 32,
+                      width: 30,
+                      height: 30,
                       child: Container(
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
+                        decoration: BoxDecoration(
+                          color: AppColors.success,
                           shape: BoxShape.circle,
-                          boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                         ),
-                        padding: const EdgeInsets.all(4),
-                        child: const Icon(Icons.two_wheeler_rounded, size: 18, color: Colors.blue),
+                        child: const Icon(Icons.two_wheeler_rounded, size: 16, color: Colors.white),
                       ),
-                    );
-                  }).toList(),
-                ),
+                    ),
+                ],
+              ),
+              const OsmAttribution(),
             ],
           ),
           Positioned(
@@ -81,12 +107,9 @@ class RidersNearYouMap extends ConsumerWidget {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.radar_rounded, size: 16, color: Colors.blue),
+                  const Icon(Icons.two_wheeler_rounded, size: 16, color: AppColors.success),
                   const SizedBox(width: 6),
-                  Text(
-                    '${ridersAsync.valueOrNull?.length ?? 0} riders nearby',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  ),
+                  Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                 ],
               ),
             ),

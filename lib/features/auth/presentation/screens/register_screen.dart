@@ -172,7 +172,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       if (mounted) {
         setState(() {
           _isCheckingEmail = false;
-          _isEmailAvailable = !exists;
+          _isEmailAvailable = exists == null ? null : !exists;
         });
       }
     });
@@ -190,7 +190,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.brandBlue),
             ),
             const SizedBox(width: 8),
-            Text('Checking availability...', style: GoogleFonts.inter(fontSize: 12, color: AppColors.slate)),
+            Flexible(
+              child: Text('Checking availability...',
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(fontSize: 12, color: AppColors.slate)),
+            ),
           ],
         ),
       );

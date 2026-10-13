@@ -1,4 +1,4 @@
-import 'dart:io' as dart_io;
+import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/supabase/supabase_client.dart';
@@ -72,15 +72,42 @@ class RiderRepository {
     }
   }
 
-  Future<void> setOnlineStatus(String riderId, bool isOnline) async {
-    await _supabase
-        .from('rider_locations')
-        .upsert({'rider_id': riderId, 'is_online': isOnline});
+  /// Latest rider application — the web's "Vehicle info" tab.
+  Future<Map<String, dynamic>?> fetchApplication(String riderId) async {
+    return await _supabase
+        .from('rider_applications')
+        .select()
+        .eq('rider_id', riderId)
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+  }
+
+  // ── Request visibility ────────────────────────────────────────────────
+
+  /// Open (unassigned, pending) requests for [kind]. A scheduled ride stays
+  /// hidden until 30 minutes before pickup — same rule as the web's
+  /// loadRequests() (food/parcel can't be scheduled).
+  PostgrestFilterBuilder<List<Map<String, dynamic>>> _openQuery(
+    BookingKind kind, {
+    String columns = '*',
+  }) {
+    var q = _supabase
+        .from(kind.tableName)
+        .select(columns)
+        .filter('rider_id', 'is', null)
+        .eq('status', 'pending');
+    if (kind == BookingKind.transport) {
+      final visibleBy =
+          DateTime.now().add(const Duration(minutes: 30)).toUtc().toIso8601String();
+      q = q.or('scheduled_for.is.null,scheduled_for.lte.$visibleBy');
+    }
+    return q;
   }
 
   // ── Home snapshot ─────────────────────────────────────────────────────
 
-  Future<RiderHomeSnapshot> fetchHomeSnapshot(String riderId, double floatAmount) async {
+  Future<RiderHomeSnapshot> fetchHomeSnapshot(String riderId) async {
     if (riderId.isEmpty) return const RiderHomeSnapshot();
 
     final startOfDay = () {
@@ -127,18 +154,8 @@ class RiderRepository {
     var openRequests = 0;
     final active = <BookingBase>[];
     for (final kind in BookingKind.values) {
-      var query = _supabase
-          .from(kind.tableName)
-          .select('id')
-          .filter('rider_id', 'is', null)
-          .eq('status', 'pending');
-          
-      if (kind == BookingKind.food) {
-        query = query.lte('total_items_price', floatAmount);
-      }
-
-      final open = await query;
-      openRequests += (open as List).length;
+      final open = await _openQuery(kind, columns: 'id');
+      openRequests += open.length;
 
       final mine = await _supabase
           .from(kind.tableName)
@@ -160,22 +177,14 @@ class RiderRepository {
 
   // ── Requests ──────────────────────────────────────────────────────────
 
-  Future<List<BookingBase>> fetchOpenRequests(double floatAmount) async {
+  /// Every open request, like the web. Food orders above the rider's float
+  /// are still listed — the requests tab flags them so the rider knows they'd
+  /// need more cash on hand to buy the order.
+  Future<List<BookingBase>> fetchOpenRequests() async {
     final results = <BookingBase>[];
     for (final kind in BookingKind.values) {
-      var query = _supabase
-          .from(kind.tableName)
-          .select()
-          .filter('rider_id', 'is', null)
-          .eq('status', 'pending');
-      
-      if (kind == BookingKind.food) {
-        // Only show food deliveries if the rider has enough float to cover the items price
-        query = query.lte('total_items_price', floatAmount);
-      }
-
-      final response = await query.order('created_at', ascending: false);
-      results.addAll((response as List).map((json) => _fromRow(kind, json)));
+      final response = await _openQuery(kind).order('created_at', ascending: false);
+      results.addAll(response.map((json) => _fromRow(kind, json)));
     }
     results.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return results;
@@ -183,11 +192,14 @@ class RiderRepository {
 
   /// Accepts a booking with a race-safe guard (only if rider_id still null).
   Future<void> acceptBooking(BookingBase booking, String riderId) async {
-    await _supabase
+    final rows = await _supabase
         .from(booking.kind.tableName)
         .update({'rider_id': riderId, 'status': 'accepted'})
         .eq('id', booking.id)
-        .filter('rider_id', 'is', null);
+        .filter('rider_id', 'is', null)
+        .select('id');
+    // Zero rows = another rider claimed it first (or it expired/cancelled).
+    if (rows.isEmpty) throw Exception('This booking was just taken or is no longer available.');
   }
 
   // ── Accepted / active bookings ────────────────────────────────────────
@@ -228,52 +240,142 @@ class RiderRepository {
     BookingBase booking,
     String status, {
     required String riderId,
-    String? dropoffPhotoUrl,
   }) async {
+    // A ride paid online can't start or finish until PayMongo confirmed it —
+    // same guard as the web's updateStatus().
+    if (booking.kind == BookingKind.transport &&
+        (status == 'ongoing' || status == 'completed')) {
+      final current = await _supabase
+          .from(booking.kind.tableName)
+          .select('payment_method, payment_status')
+          .eq('id', booking.id)
+          .single();
+      final method = current['payment_method'] as String?;
+      if (method != null && method != 'cash' && current['payment_status'] != 'paid') {
+        throw Exception(
+            "Customer's ${method == 'gcash' ? 'GCash' : method} payment hasn't gone through yet.");
+      }
+    }
     await _supabase
         .from(booking.kind.tableName)
-        .update({
-          'status': status,
-          if (dropoffPhotoUrl != null) 'dropoff_photo_url': dropoffPhotoUrl,
-        }).eq('id', booking.id);
+        .update({'status': status}).eq('id', booking.id);
   }
 
-  Future<void> cancelAndRematchBooking(BookingBase booking) async {
+  /// Can't make it after accepting — hand the job back to the pool (allowed
+  /// only before the trip starts; the trigger resets the grace period).
+  Future<void> releaseBooking(BookingBase booking) async {
     await _supabase.from(booking.kind.tableName).update({
       'status': 'pending',
       'rider_id': null,
     }).eq('id', booking.id);
   }
 
-  Future<String> uploadDropoffPhoto(String bookingId, String filePath) async {
-    final file = dart_io.File(filePath);
-    final ext = filePath.split('.').last;
-    final path = 'dropoffs/${bookingId}_${DateTime.now().millisecondsSinceEpoch}.$ext';
-    await _supabase.storage.from('deliveries').upload(path, file);
-    return _supabase.storage.from('deliveries').getPublicUrl(path);
+  /// Uploads a proof-of-delivery photo to `delivery-proof/<riderId>/…` (the
+  /// only folder the storage policy lets this rider write) and records it on
+  /// the booking. Returns the public URL.
+  Future<String> uploadDeliveryProof({
+    required String riderId,
+    required BookingBase booking,
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    final path =
+        '$riderId/${booking.kind.name}-${booking.id}-${DateTime.now().millisecondsSinceEpoch}${_ext(fileName)}';
+    await _supabase.storage.from('delivery-proof').uploadBinary(
+          path,
+          bytes,
+          fileOptions: FileOptions(upsert: true, contentType: _mime(fileName)),
+        );
+    final url = _supabase.storage.from('delivery-proof').getPublicUrl(path);
+    await _supabase
+        .from(booking.kind.tableName)
+        .update({'delivery_proof_url': url}).eq('id', booking.id);
+    return url;
   }
 
-  Future<void> adjustFoodBill(String bookingId, double actualCost, String receiptPath) async {
-    final file = dart_io.File(receiptPath);
-    final ext = receiptPath.split('.').last;
-    final path = 'receipts/${bookingId}_${DateTime.now().millisecondsSinceEpoch}.$ext';
-    await _supabase.storage.from('deliveries').upload(path, file);
-    final url = _supabase.storage.from('deliveries').getPublicUrl(path);
-    
-    await _supabase.from('food_deliveries').update({
-      'actual_food_cost': actualCost,
-      'receipt_photo_url': url,
-    }).eq('id', bookingId);
+  /// Confirms the real fare of a food/parcel job via the `finalize-fare`
+  /// Edge Function (validated against the estimate, notifies the customer,
+  /// and is what makes a GCash/wallet payment payable).
+  Future<void> finalizeFare(BookingBase booking, double amount) async {
+    try {
+      final response = await _supabase.functions.invoke('finalize-fare', body: {
+        'booking_type': booking.kind.name,
+        'booking_id': booking.id,
+        'amount': amount,
+      });
+      final data = response.data;
+      if (data is Map && data['error'] != null) throw Exception(data['error']);
+    } on FunctionException catch (e) {
+      final details = e.details;
+      throw Exception(details is Map && details['error'] != null
+          ? details['error']
+          : 'Could not confirm the fare.');
+    }
   }
 
-  Future<void> markItemOutOfStock(String bookingId, int itemIndex) async {
-    final response = await _supabase.from('food_deliveries').select('items').eq('id', bookingId).single();
-    final items = List<dynamic>.from(response['items'] ?? []);
-    if (itemIndex >= 0 && itemIndex < items.length) {
-      final item = Map<String, dynamic>.from(items[itemIndex]);
-      item['is_out_of_stock'] = true;
-      items[itemIndex] = item;
-      await _supabase.from('food_deliveries').update({'items': items}).eq('id', bookingId);
+  /// Food: photo of the counter receipt (`receipts/<riderId>/…`), the actual
+  /// amount paid, then the confirmed fare — the web's adjustFoodBill flow.
+  /// The receipt is best-effort: if the upload fails the fare is still set.
+  Future<void> confirmFoodFare({
+    required String riderId,
+    required FoodDeliveryModel booking,
+    required double amount,
+    Uint8List? receiptBytes,
+    String? receiptName,
+  }) async {
+    if (receiptBytes != null) {
+      try {
+        final path =
+            '$riderId/receipt-${booking.id}-${DateTime.now().millisecondsSinceEpoch}${_ext(receiptName ?? '.jpg')}';
+        await _supabase.storage.from('receipts').uploadBinary(
+              path,
+              receiptBytes,
+              fileOptions: FileOptions(upsert: true, contentType: _mime(receiptName ?? '.jpg')),
+            );
+        final url = _supabase.storage.from('receipts').getPublicUrl(path);
+        await _supabase.from('food_deliveries').update({
+          'actual_food_cost': amount,
+          'receipt_photo_url': url,
+        }).eq('id', booking.id);
+      } catch (e, s) {
+        AppLog.warn('receipt upload failed — confirming fare without it', e, s);
+      }
+    }
+    await finalizeFare(booking, amount);
+  }
+
+  Future<void> markItemOutOfStock(String orderItemId) async {
+    final rows = await _supabase
+        .from('food_order_items')
+        .update({'is_out_of_stock': true})
+        .eq('id', orderItemId)
+        .select('id');
+    if (rows.isEmpty) throw Exception('Could not update that item.');
+  }
+
+  /// Multi-stop rides: the assigned rider marks the next stop reached.
+  Future<void> markStopArrived(String stopId) async {
+    await _supabase
+        .from('ride_stops')
+        .update({'arrived_at': DateTime.now().toUtc().toIso8601String()})
+        .eq('id', stopId);
+  }
+
+  static String _ext(String name) {
+    final dot = name.lastIndexOf('.');
+    return dot >= 0 ? name.substring(dot).toLowerCase() : '.jpg';
+  }
+
+  static String _mime(String name) {
+    switch (_ext(name)) {
+      case '.png':
+        return 'image/png';
+      case '.webp':
+        return 'image/webp';
+      case '.heic':
+        return 'image/heic';
+      default:
+        return 'image/jpeg';
     }
   }
 

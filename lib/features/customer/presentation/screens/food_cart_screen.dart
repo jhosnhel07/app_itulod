@@ -1,18 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/constants/app_typography.dart';
+import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/services/geocoding_service.dart';
+import '../../../../core/constants/app_typography.dart';
+import '../../../../core/services/route_service.dart';
+import '../../../../core/utils/fare_estimator.dart';
+import '../../../../core/utils/formatters.dart';
+import '../../../../shared/models/vehicle_model.dart';
+import '../../../../shared/widgets/app_button.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/customer_repository.dart';
 import '../providers/cart_provider.dart';
 import '../widgets/location_picker_field.dart';
+import '../widgets/payment_method_selector.dart';
 import 'map_picker_screen.dart';
-import 'package:latlong2/latlong.dart';
-import '../../../../core/utils/fare_estimator.dart';
-import '../../../../core/utils/formatters.dart';
-import '../../../../shared/models/vehicle_model.dart';
 
+/// Checkout for a cart-based food order — mirrors the web's food form
+/// (customer.js wireFoodForm): items + distance-based delivery fee, a vehicle,
+/// and a payment method. GCash/wallet is charged only once the rider confirms
+/// the fare at pickup, never at checkout.
 class FoodCartScreen extends ConsumerStatefulWidget {
   const FoodCartScreen({super.key});
 
@@ -23,201 +29,237 @@ class FoodCartScreen extends ConsumerStatefulWidget {
 class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
   final _addressController = TextEditingController();
   final _instructionsController = TextEditingController();
-  final _promoCodeController = TextEditingController();
-  DateTime? _scheduledFor;
   LatLng? _deliveryPoint;
   bool _submitting = false;
-  double? _distanceKm;
-  double? _fare;
   VehicleModel? _vehicle;
+  String _paymentMethod = 'cash';
 
-  void _pickLocation() async {
-    if (!mounted) return;
-    final loc = await Navigator.of(context).push<LatLng>(
-      MaterialPageRoute(
-        builder: (_) => MapPickerScreen(
-          title: 'Select Delivery Location',
-          initialCenter: _deliveryPoint,
-        ),
-      ),
-    );
-    if (loc != null) {
-      final name = await ref.read(geocodingServiceProvider).reverseGeocode(loc);
-      setState(() {
-        _deliveryPoint = loc;
-        _addressController.text = name ?? '${loc.latitude}, ${loc.longitude}';
-      });
-      _refreshFare();
-    }
+  /// Road distance from OSRM when the restaurant has coordinates; otherwise
+  /// the straight-line / address estimate stands in.
+  double? _routeKm;
+  int _routeToken = 0;
+
+  @override
+  void dispose() {
+    _addressController.dispose();
+    _instructionsController.dispose();
+    super.dispose();
   }
 
-  void _refreshFare() {
-    final cartState = ref.read(cartProvider);
-    if (cartState.restaurant == null || _addressController.text.isEmpty) {
-      setState(() {
-        _distanceKm = null;
-        _fare = null;
-      });
-      return;
-    }
-    
-    final vehicles = ref.read(vehiclesListProvider).value ?? [];
-    if (vehicles.isEmpty) return;
-    _vehicle ??= vehicles.firstWhere((v) => v.name.toLowerCase().contains('motor'), orElse: () => vehicles.first);
+  LatLng? get _restaurantPoint {
+    final r = ref.read(cartProvider).restaurant;
+    return (r != null && r.hasLocation) ? LatLng(r.lat!, r.lng!) : null;
+  }
 
+  double? get _distanceKm {
+    final restaurant = ref.read(cartProvider).restaurant;
+    if (restaurant == null || _addressController.text.trim().isEmpty) return null;
+    if (_routeKm != null) return _routeKm;
+    final from = _restaurantPoint;
+    final to = _deliveryPoint;
+    if (from != null && to != null) return FareEstimator.roadDistanceKm(from, to);
+    return FareEstimator.simulateDistanceKm(restaurant.address, _addressController.text);
+  }
+
+  double? get _deliveryFee {
+    final km = _distanceKm;
+    if (km == null || _vehicle == null) return null;
+    return FareEstimator.estimateFare(_vehicle, km);
+  }
+
+  Future<void> _pickLocation() async {
+    final picked = await MapPickerScreen.show(
+      context,
+      title: 'Set delivery location',
+      pinColor: AppColors.danger,
+      initialCenter: _deliveryPoint,
+      initialAddress: _addressController.text.trim().isEmpty ? null : _addressController.text,
+    );
+    if (picked == null || !mounted) return;
     setState(() {
-      _distanceKm = FareEstimator.simulateDistanceKm(cartState.restaurant!.address, _addressController.text);
-      _fare = FareEstimator.estimateFare(_vehicle, _distanceKm!);
+      _deliveryPoint = picked.point;
+      _addressController.text = picked.address;
+      _routeKm = null;
     });
+    _refreshRoute();
   }
-  
-  Future<void> _pickSchedule() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 7)),
-    );
-    if (date != null && mounted) {
-      final time = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay.now(),
-      );
-      if (time != null) {
-        setState(() {
-          _scheduledFor = DateTime(date.year, date.month, date.day, time.hour, time.minute);
-        });
-      }
-    }
+
+  Future<void> _refreshRoute() async {
+    final from = _restaurantPoint;
+    final to = _deliveryPoint;
+    final token = ++_routeToken;
+    if (from == null || to == null) return;
+    final result = await ref.read(routeServiceProvider).fetchRoute(from, to);
+    if (!mounted || token != _routeToken) return;
+    setState(() => _routeKm = result?.distanceKm);
   }
 
   Future<void> _submit() async {
-    if (_deliveryPoint == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select delivery address')));
+    final cart = ref.read(cartProvider);
+    final restaurant = cart.restaurant;
+    if (restaurant == null || cart.items.isEmpty) {
+      _toast('Choose a restaurant and add at least one item.', AppColors.danger);
       return;
     }
-
-    final cartState = ref.read(cartProvider);
-    if (cartState.restaurant == null || cartState.items.isEmpty) return;
-    
+    if (_addressController.text.trim().isEmpty) {
+      _toast('Set a delivery address.', AppColors.danger);
+      return;
+    }
+    final vehicle = _vehicle;
+    if (vehicle == null) {
+      _toast('Choose a vehicle.', AppColors.danger);
+      return;
+    }
     final user = ref.read(authNotifierProvider).profile;
     if (user == null) return;
 
     setState(() => _submitting = true);
-    
     try {
-      final repo = ref.read(customerRepositoryProvider);
-      
-      final vehicles = ref.read(vehiclesListProvider).value ?? [];
-      final vehicle = _vehicle ?? (vehicles.isNotEmpty 
-          ? vehicles.firstWhere((v) => v.name.toLowerCase().contains('motor'), orElse: () => vehicles.first)
-          : throw Exception('No vehicles available'));
-
-      final itemsList = cartState.items.values.map((i) => {
-        'menu_item_id': i.menuItem.id,
-        'name': i.menuItem.name,
-        'quantity': i.quantity,
-        'price': i.menuItem.price,
-      }).toList();
-
-      await repo.createFoodBooking(
-        customerId: user.id,
-        vehicle: vehicle,
-        restaurantName: cartState.restaurant!.name,
-        pickupAddress: cartState.restaurant!.address,
-        deliveryAddress: _addressController.text,
-        instructions: _instructionsController.text,
-        scheduledFor: _scheduledFor,
-        promoCode: _promoCodeController.text.isNotEmpty ? _promoCodeController.text : null,
-        restaurantId: cartState.restaurant!.id,
-        distanceKm: _distanceKm,
-        items: itemsList,
-        totalItemsPrice: cartState.totalPrice,
-      );
+      final order = await ref.read(customerRepositoryProvider).createFoodBooking(
+            customerId: user.id,
+            vehicle: vehicle,
+            restaurantId: restaurant.id,
+            restaurantName: restaurant.name,
+            restaurantAddress: restaurant.address,
+            deliveryAddress: _addressController.text,
+            instructions: _instructionsController.text,
+            distanceKm: _distanceKm,
+            paymentMethod: _paymentMethod,
+            items: [
+              for (final i in cart.items.values)
+                (
+                  menuItemId: i.menuItem.id,
+                  name: i.menuItem.name,
+                  unitPrice: i.menuItem.price,
+                  quantity: i.quantity,
+                ),
+            ],
+          );
 
       ref.read(cartProvider.notifier).clearCart();
-      if (mounted) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
-      }
+      if (!mounted) return;
+      _toast(
+        _paymentMethod == 'cash'
+            ? 'Order placed! You\'ll pay ${order.displayFare} cash on delivery.'
+            : 'Order placed (${order.displayFare})! We\'ll ask you to pay once the rider confirms the fare at pickup.',
+        AppColors.success,
+      );
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        _toast(e.toString().replaceFirst('Exception: ', ''), AppColors.danger);
         setState(() => _submitting = false);
       }
     }
   }
 
+  void _toast(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: color),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final cartState = ref.watch(cartProvider);
-    
+    final cart = ref.watch(cartProvider);
+    final vehiclesAsync = ref.watch(vehiclesListProvider);
+
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Checkout')),
-      body: cartState.items.isEmpty
-          ? const Center(child: Text('Cart is empty'))
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                Text('Order Summary', style: AppTypography.h3),
-                const SizedBox(height: 8),
-                ...cartState.items.values.map((item) => ListTile(
-                  title: Text('${item.quantity}x ${item.menuItem.name}'),
-                  trailing: Text('\$${item.totalPrice.toStringAsFixed(2)}'),
-                )),
-                const Divider(),
-                ListTile(
-                  title: const Text('Items Total', style: TextStyle(fontWeight: FontWeight.bold)),
-                  trailing: Text('\$${cartState.totalPrice.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                const SizedBox(height: 24),
-                Text('Delivery Details', style: AppTypography.h3),
-                const SizedBox(height: 8),
-                LocationPickerField(
-                  controller: _addressController,
-                  hint: 'Tap to set your delivery address',
-                  isPickup: false,
-                  emptyError: 'Set a delivery address',
-                  onTap: _pickLocation,
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _instructionsController,
-                  decoration: const InputDecoration(labelText: 'Instructions for driver'),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _promoCodeController,
-                  decoration: const InputDecoration(labelText: 'Promo Code (Optional)'),
-                ),
-                const SizedBox(height: 16),
-                ListTile(
-                  title: const Text('Schedule for later?'),
-                  subtitle: Text(_scheduledFor != null ? _scheduledFor!.toString() : 'Optional'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.edit_calendar),
-                    onPressed: _pickSchedule,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _fareBox(),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: _submitting ? null : _submit,
-                  child: _submitting ? const CircularProgressIndicator() : const Text('Place Order'),
-                ),
-              ],
+      body: cart.items.isEmpty
+          ? const Center(child: Text('Your cart is empty'))
+          : vehiclesAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('Could not load vehicles.\n$e', textAlign: TextAlign.center)),
+              data: (vehicles) {
+                _vehicle ??= vehicles.isEmpty
+                    ? null
+                    : vehicles.firstWhere((v) => v.name.toLowerCase().contains('motor'),
+                        orElse: () => vehicles.first);
+                return ListView(
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    Text(cart.restaurant?.name ?? 'Order summary', style: AppTypography.h3),
+                    const SizedBox(height: 8),
+                    Card(
+                      child: Column(
+                        children: [
+                          for (final item in cart.items.values)
+                            ListTile(
+                              dense: true,
+                              title: Text('${item.quantity} × ${item.menuItem.name}'),
+                              trailing: Text(Formatters.currency(item.totalPrice)),
+                            ),
+                          const Divider(height: 1),
+                          ListTile(
+                            dense: true,
+                            title: Text('Item subtotal', style: AppTypography.bodyBold),
+                            trailing: Text(Formatters.currency(cart.totalPrice),
+                                style: AppTypography.bodyBold),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text('Delivery details', style: AppTypography.h3),
+                    const SizedBox(height: 8),
+                    LocationPickerField(
+                      controller: _addressController,
+                      hint: 'Tap to set your delivery address',
+                      isPickup: false,
+                      emptyError: 'Set a delivery address',
+                      onTap: _pickLocation,
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: _instructionsController,
+                      decoration: const InputDecoration(
+                        labelText: 'Instructions for the rider (optional)',
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<VehicleModel>(
+                      initialValue: _vehicle,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Vehicle type',
+                        prefixIcon: Icon(Icons.directions_rounded),
+                      ),
+                      items: [
+                        for (final v in vehicles)
+                          DropdownMenuItem(
+                            value: v,
+                            child: Text('${v.name} — from ${Formatters.currency(v.baseFare)}'),
+                          ),
+                      ],
+                      onChanged: (v) => setState(() => _vehicle = v),
+                    ),
+                    const SizedBox(height: 14),
+                    PaymentMethodSelector(
+                      value: _paymentMethod,
+                      onChanged: (v) => setState(() => _paymentMethod = v),
+                      onlineNote: 'You\'ll be asked to pay once the rider confirms the fare at pickup.',
+                    ),
+                    const SizedBox(height: 16),
+                    _fareBox(cart.totalPrice),
+                    const SizedBox(height: 20),
+                    AppButton(
+                      text: 'Place Order',
+                      icon: Icons.check_rounded,
+                      isLoading: _submitting,
+                      onPressed: vehicles.isEmpty ? null : _submit,
+                    ),
+                  ],
+                );
+              },
             ),
     );
   }
 
-  Widget _fareBox() {
-    if (_fare == null) return const SizedBox.shrink();
-
-    final baseFare = _vehicle?.baseFare ?? 0.0;
-    final distanceFare = _fare! - baseFare;
-    final cartTotal = ref.read(cartProvider).totalPrice;
-    final total = cartTotal + _fare!;
-
+  Widget _fareBox(double subtotal) {
+    final fee = _deliveryFee;
+    final km = _distanceKm;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -229,35 +271,25 @@ class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text('ESTIMATED TOTAL', style: AppTypography.caption),
-          Text(Formatters.currency(total), style: AppTypography.h3.copyWith(color: AppColors.primary)),
+          Text(Formatters.currency(subtotal + (fee ?? 0)),
+              style: AppTypography.h3.copyWith(color: AppColors.primary)),
           const SizedBox(height: 12),
           Container(height: 1, color: AppColors.cardBorder),
           const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Items Total', style: AppTypography.caption.copyWith(color: AppColors.neutral500)),
-              Text(Formatters.currency(cartTotal), style: AppTypography.caption.copyWith(color: AppColors.neutral700)),
-            ],
-          ),
+          _line('Item subtotal', Formatters.currency(subtotal)),
           const SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Base Delivery Fee', style: AppTypography.caption.copyWith(color: AppColors.neutral500)),
-              Text(Formatters.currency(baseFare), style: AppTypography.caption.copyWith(color: AppColors.neutral700)),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Distance Charge (${Formatters.distance(_distanceKm)})', style: AppTypography.caption.copyWith(color: AppColors.neutral500)),
-              Text(Formatters.currency(distanceFare), style: AppTypography.caption.copyWith(color: AppColors.neutral700)),
-            ],
-          ),
+          _line('Delivery fee${km == null ? '' : ' (${Formatters.distance(km)}${_routeKm == null ? ', est.' : ''})'}',
+              fee == null ? '—' : Formatters.currency(fee)),
         ],
       ),
     );
   }
+
+  Widget _line(String label, String value) => Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Flexible(child: Text(label, style: AppTypography.caption.copyWith(color: AppColors.neutral500))),
+          Text(value, style: AppTypography.caption.copyWith(color: AppColors.neutral700)),
+        ],
+      );
 }

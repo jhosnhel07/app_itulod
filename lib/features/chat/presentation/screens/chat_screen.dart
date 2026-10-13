@@ -2,14 +2,33 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
+import '../../../../shared/models/booking_models.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/chat_repository.dart';
 import '../providers/chat_provider.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
+  final BookingKind kind;
   final String bookingId;
+  /// RLS only accepts messages while the booking is accepted/ongoing; past
+  /// that the thread stays readable but the composer is hidden (same as web).
+  final bool canSend;
 
-  const ChatScreen({super.key, required this.bookingId});
+  const ChatScreen({
+    super.key,
+    required this.kind,
+    required this.bookingId,
+    this.canSend = true,
+  });
+
+  /// Opens the chat for [booking], read-only once it has left accepted/ongoing.
+  static Route<void> route(BookingBase booking) => MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          kind: booking.kind,
+          bookingId: booking.id,
+          canSend: booking.status == 'accepted' || booking.status == 'ongoing',
+        ),
+      );
 
   @override
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
@@ -37,9 +56,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     
     try {
       await ref.read(chatRepositoryProvider).sendMessage(
-            widget.bookingId,
-            profile.id,
-            text,
+            bookingType: widget.kind.name,
+            bookingId: widget.bookingId,
+            senderId: profile.id,
+            body: text,
           );
       _scrollToBottom();
     } catch (e) {
@@ -63,7 +83,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final messagesAsync = ref.watch(chatMessagesProvider(widget.bookingId));
+    final messagesAsync = ref.watch(chatMessagesProvider((widget.kind.name, widget.bookingId)));
     final currentUserId = ref.watch(authNotifierProvider).profile?.id;
 
     return Scaffold(
@@ -81,7 +101,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 // Messages are naturally ascending by created_at.
                 // Reversing them since we use reverse: true in ListView.
                 final reversedMessages = messages.reversed.toList();
-                
+                if (reversedMessages.isEmpty) {
+                  return Center(
+                    child: Text('No messages yet — say hello!',
+                        style: AppTypography.caption),
+                  );
+                }
+
                 return ListView.builder(
                   controller: _scrollController,
                   reverse: true,
@@ -107,7 +133,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           ),
                         ),
                         child: Text(
-                          message.text,
+                          message.body,
                           style: AppTypography.body.copyWith(
                             color: isMe ? Colors.white : Colors.black,
                           ),
@@ -121,6 +147,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               error: (e, st) => Center(child: Text('Error: $e')),
             ),
           ),
+          if (!widget.canSend)
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  'This thread is read-only now that the booking has ended.',
+                  style: AppTypography.caption,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            )
+          else
           SafeArea(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -147,6 +185,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           vertical: 10,
                         ),
                       ),
+                      maxLength: 1000, // booking_messages.body check constraint
+                      buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _sendMessage(),
                     ),

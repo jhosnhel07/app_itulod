@@ -55,7 +55,8 @@ class _BookingReceiptScreenState extends ConsumerState<BookingReceiptScreen> {
   static const _maxPolls = 14;
   static const _pollGap = Duration(milliseconds: 700);
 
-  bool get _isCash => widget.booking.paymentMethod != 'gcash';
+  bool get _isCash => widget.booking.paymentMethod == null || widget.booking.paymentMethod == 'cash';
+  String get _methodName => widget.booking.paymentMethod == 'wallet' ? 'your wallet' : 'GCash';
 
   /// GCash was chosen but checkout was never opened yet (booking just
   /// placed) — nothing to poll for, so show a plain confirmation instead.
@@ -147,7 +148,7 @@ class _BookingReceiptScreenState extends ConsumerState<BookingReceiptScreen> {
         icon: Icons.check_rounded,
         color: AppColors.success,
         title: 'Booking Placed!',
-        sub: 'A rider will accept your ride shortly. Pay via GCash anytime from Home or My Bookings.',
+        sub: 'A rider will accept your ride shortly. Pay with $_methodName anytime from Home or My Bookings.',
       );
     }
     switch (_status) {
@@ -237,7 +238,7 @@ class _BookingReceiptScreenState extends ConsumerState<BookingReceiptScreen> {
         ('Booking', _text('#${b.id.substring(0, 8).toUpperCase()}')),
         ('Route', _text('${b.pickupAddress} → ${b.destinationAddress}')),
         ('Booked', _text(Formatters.date(b.createdAt))),
-        ('Payment', _text('GCash — pay from Home or My Bookings')),
+        ('Payment', _text('${widget.booking.paymentMethod == 'wallet' ? 'Wallet' : 'GCash'} — pay from Home or My Bookings')),
       ]);
     } else {
       final ref = _row?.paymentSourceId;
@@ -328,7 +329,7 @@ class _BookingReceiptScreenState extends ConsumerState<BookingReceiptScreen> {
     final msg = _isCash
         ? 'Your booking is confirmed!'
         : _payLater
-            ? 'Booking placed! Pay via GCash anytime from Home or My Bookings.'
+            ? 'Booking placed! Pay with $_methodName anytime from Home or My Bookings.'
             : switch (_status) {
             'paid' => 'Payment received — your booking is confirmed!',
             'failed' => 'Payment did not go through. You can retry from My Bookings.',

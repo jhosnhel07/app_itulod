@@ -18,6 +18,13 @@ class RoutePreviewMap extends StatelessWidget {
   final List<LatLng>? routePoints;
   final double height;
 
+  /// Intermediate stops on a multi-stop ride, drawn as small numbered dots.
+  final List<LatLng> stops;
+
+  /// The assigned rider's live position while a trip is active. Not part of
+  /// the camera fit, so the map doesn't jump every time the rider moves.
+  final LatLng? liveRider;
+
   /// Test seam: keeps tiles off the network.
   final TileProvider? tileProvider;
 
@@ -27,6 +34,8 @@ class RoutePreviewMap extends StatelessWidget {
     required this.destination,
     this.routePoints,
     this.height = 180,
+    this.stops = const [],
+    this.liveRider,
     this.tileProvider,
   });
 
@@ -149,6 +158,20 @@ class RoutePreviewMap extends StatelessWidget {
                       alignment: Alignment.topCenter,
                       child: const MapPin(color: AppColors.danger, size: 34),
                     ),
+                    for (var i = 0; i < stops.length; i++)
+                      Marker(
+                        point: stops[i],
+                        width: 22,
+                        height: 22,
+                        child: _Dot(label: '${i + 1}', color: AppColors.warning),
+                      ),
+                    if (liveRider != null)
+                      Marker(
+                        point: liveRider!,
+                        width: 34,
+                        height: 34,
+                        child: const _RiderBadge(),
+                      ),
                   ],
                 ),
                 const OsmAttribution(),
@@ -157,6 +180,47 @@ class RoutePreviewMap extends StatelessWidget {
           },
         ),
       ),
+    );
+  }
+}
+
+class _Dot extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _Dot({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2),
+      ),
+      child: Text(label,
+          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
+    );
+  }
+}
+
+/// The live rider marker — matches the web's motorcycle badge on the
+/// booking-details map.
+class _RiderBadge extends StatelessWidget {
+  const _RiderBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(color: AppColors.primary.withValues(alpha: 0.4), blurRadius: 10),
+        ],
+      ),
+      child: const Icon(Icons.two_wheeler_rounded, size: 20, color: AppColors.primary),
     );
   }
 }

@@ -66,16 +66,10 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
                             : const Icon(Icons.storefront, size: 50),
                         title: Text(restaurant.name,
                             style: AppTypography.bodyBold),
-                        subtitle: Text(restaurant.address,
+                        subtitle: Text(
+                            '${restaurant.cuisineType ?? 'Restaurant'} · ${restaurant.address}',
                             style: AppTypography.caption),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.star, color: Colors.amber, size: 16),
-                            const SizedBox(width: 4),
-                            Text(restaurant.rating.toStringAsFixed(1)),
-                          ],
-                        ),
+                        trailing: const Icon(Icons.chevron_right_rounded),
                         onTap: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(

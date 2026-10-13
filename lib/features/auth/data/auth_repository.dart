@@ -194,11 +194,22 @@ class AuthRepository {
     await _supabase.auth.resetPasswordForEmail(email);
   }
 
-  Future<bool> checkEmailExists(String email) async {
-    final response = await _supabase.rpc('check_email_exists', params: {
-      'lookup_email': email.trim().toLowerCase(),
-    });
-    return response as bool? ?? false;
+  /// Asks the `check-email` Edge Function (service role, deployed with
+  /// --no-verify-jwt — the same check the web registration wizard uses).
+  /// Returns null when it can't tell (network/server error, half-typed
+  /// address) so the form neither blocks nor falsely reassures.
+  Future<bool?> checkEmailExists(String email) async {
+    try {
+      final response = await _supabase.functions.invoke(
+        'check-email',
+        body: {'email': email.trim().toLowerCase()},
+      );
+      final data = response.data;
+      if (data is Map && data['available'] is bool) return !(data['available'] as bool);
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> signOut() async {

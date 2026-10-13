@@ -6,7 +6,12 @@ import '../../../../shared/screens/profile_screen.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/avatar_widget.dart';
 import '../../../../shared/widgets/status_badge.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+
+/// Admin tools (analytics, rider approvals, bookings, vehicles, restaurants,
+/// payments, promos, announcements, support) live in the web console only.
+const String _webAdminUrl = 'https://itulod.vercel.app/admin/dashboard.html';
 
 class AdminDashboardScreen extends ConsumerWidget {
   const AdminDashboardScreen({super.key});
@@ -89,12 +94,21 @@ class AdminDashboardScreen extends ConsumerWidget {
                     children: [
                       const Icon(Icons.admin_panel_settings_outlined, color: AppColors.primary, size: 48),
                       const SizedBox(height: 12),
-                      Text('Admin Dashboard Active', style: AppTypography.h3),
+                      Text('Admin tools are on the web', style: AppTypography.h3),
                       const SizedBox(height: 6),
                       Text(
-                        'Full administrative control over Users, Riders, Vehicles, Bookings, Payments, and Announcements.',
+                        'Rider approvals, bookings, customers, vehicles, restaurants, payments, promo codes, announcements and support requests are managed from the web admin console.',
                         style: AppTypography.body.copyWith(color: AppColors.neutral600),
                         textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      AppButton(
+                        text: 'Open web admin console',
+                        icon: Icons.open_in_new_rounded,
+                        onPressed: () => launchUrl(
+                          Uri.parse(_webAdminUrl),
+                          mode: LaunchMode.externalApplication,
+                        ),
                       ),
                     ],
                   ),

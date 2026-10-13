@@ -20,7 +20,7 @@ final riderHomeSnapshotProvider =
   final repo = ref.watch(riderRepositoryProvider);
   final profile = ref.watch(authNotifierProvider).profile;
   if (profile == null) return const RiderHomeSnapshot();
-  return repo.fetchHomeSnapshot(profile.id, profile.floatAmount);
+  return repo.fetchHomeSnapshot(profile.id);
 });
 
 class RiderHomeTab extends ConsumerWidget {
@@ -304,7 +304,11 @@ class _ActiveJobCard extends ConsumerWidget {
                       child: FilledButton.icon(
                         onPressed: (!approved || _paymentBlocked)
                             ? null
-                            : () => _advance(context, ref, isOngoing),
+                            // Food/parcel completion needs the confirmed fare
+                            // and a proof photo — both live on the Trip tab.
+                            : (isOngoing && booking.kind != BookingKind.transport)
+                                ? onOpenTrip
+                                : () => _advance(context, ref, isOngoing),
                         icon: Icon(
                           isOngoing
                               ? Icons.task_alt_rounded
@@ -352,7 +356,7 @@ class _ActiveJobCard extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Update failed: $e'),
+              content: Text('Update failed: ${e.toString().replaceFirst('Exception: ', '')}'),
               backgroundColor: AppColors.danger),
         );
       }

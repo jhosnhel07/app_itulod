@@ -12,7 +12,6 @@ import '../../features/customer/presentation/screens/wallet_screen.dart';
 import '../../features/promos/presentation/screens/referrals_screen.dart';
 import '../../features/rider/presentation/screens/rider_dashboard_screen.dart';
 import '../../shared/models/profile_model.dart';
-import '../../shared/models/rider_application_model.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authListenable = _AuthStateListenable(ref);
@@ -60,16 +59,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       if (role == UserRole.rider) {
-        final application = authState.riderApplication;
-        final isApproved = application?.status == ApplicationStatus.approved;
-
-        if (!isApproved) {
-          if (state.matchedLocation != '/rider/application-status') {
-            return '/rider/application-status';
-          }
-          return null;
-        }
-
+        // Pending and rejected riders still get the dashboard, like the web:
+        // it shows an approval banner, and Accept / Go online stay disabled
+        // until an admin approves (the DB enforces is_approved_rider() too).
         if (isLoggingIn || state.matchedLocation == '/rider/application-status' || !state.matchedLocation.startsWith('/rider')) {
           return '/rider/home';
         }

@@ -18,6 +18,7 @@ class RestaurantRepository {
       final response = await _client
           .from('restaurants')
           .select()
+          .eq('is_active', true)
           .order('name');
       return (response as List)
           .map((json) => RestaurantModel.fromJson(json))
@@ -34,6 +35,7 @@ class RestaurantRepository {
           .from('menu_items')
           .select()
           .eq('restaurant_id', restaurantId)
+          .eq('is_available', true)
           .order('name');
       return (response as List)
           .map((json) => MenuItemModel.fromJson(json))

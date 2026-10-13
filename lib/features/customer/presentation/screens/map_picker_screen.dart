@@ -594,13 +594,22 @@ class _MapPickerScreenState extends ConsumerState<MapPickerScreen> {
     );
 
     if (label != null && label.trim().isNotEmpty && mounted) {
-      await ref.read(savedAddressesProvider.notifier).add(
-        label.trim(),
-        address,
-        _center.latitude,
-        _center.longitude,
-      );
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Address saved')));
+      final messenger = ScaffoldMessenger.of(context);
+      try {
+        final saved = await ref.read(savedAddressesProvider.notifier).add(
+          label.trim(),
+          address,
+          _center.latitude,
+          _center.longitude,
+        );
+        if (!mounted) return;
+        if (saved != null) {
+          messenger.showSnackBar(const SnackBar(content: Text('Address saved')));
+        }
+      } catch (e) {
+        if (!mounted) return;
+        messenger.showSnackBar(SnackBar(content: Text('Failed to save address: $e')));
+      }
     }
   }
 }

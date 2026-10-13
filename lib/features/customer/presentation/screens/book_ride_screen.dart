@@ -100,10 +100,10 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
 
     // Ask user to pick from saved addresses or map
     final savedAddresses = ref.read(savedAddressesProvider).value ?? [];
-    PickedLocation? picked;
+    PickedPlace? picked;
 
     if (savedAddresses.isNotEmpty) {
-      picked = await showModalBottomSheet<PickedLocation>(
+      picked = await showModalBottomSheet<PickedPlace>(
         context: context,
         builder: (ctx) => SafeArea(
           child: Column(
@@ -113,7 +113,7 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
                 leading: const Icon(Icons.map_rounded),
                 title: const Text('Choose on Map'),
                 onTap: () {
-                  Navigator.pop(ctx, PickedLocation(address: '', point: const LatLng(0,0))); // Sentinel value for map
+                  Navigator.pop(ctx, const PickedPlace(address: '', point: LatLng(0,0))); // Sentinel value for map
                 },
               ),
               const Divider(),
@@ -123,7 +123,7 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
                   title: Text(addr.label),
                   subtitle: Text(addr.address, maxLines: 1, overflow: TextOverflow.ellipsis),
                   onTap: () {
-                    Navigator.pop(ctx, PickedLocation(address: addr.address, point: LatLng(addr.latitude, addr.longitude)));
+                    Navigator.pop(ctx, PickedPlace(address: addr.address, point: addr.point));
                   },
                 ),
             ],
@@ -132,7 +132,7 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
       );
     } else {
       // Just map if no saved addresses
-      picked = PickedLocation(address: '', point: const LatLng(0,0));
+      picked = const PickedPlace(address: '', point: LatLng(0,0));
     }
 
     if (picked == null) return;
@@ -207,13 +207,37 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
     final fare = _fare;
     if (fare == null) return;
 
+    // Same window the web enforces (customer.js wireRideForm).
+    final scheduled = _scheduledFor;
+    if (scheduled != null) {
+      final now = DateTime.now();
+      String? problem;
+      if (scheduled.isBefore(now.add(const Duration(minutes: 10)))) {
+        problem = 'Scheduled pickup must be at least 10 minutes from now.';
+      } else if (scheduled.isAfter(now.add(const Duration(days: 7)))) {
+        problem = 'Scheduled pickup can be at most 7 days from now.';
+      }
+      if (problem != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(problem), backgroundColor: AppColors.danger),
+        );
+        return;
+      }
+    }
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => BookingConfirmationScreen(
           vehicle: _vehicle!,
           pickupAddress: _pickupController.text,
           destinationAddress: _destinationController.text,
-          stops: _stopControllers.map((c) => c.text).where((t) => t.isNotEmpty).toList(),
+          pickupPoint: _pickupPoint,
+          destinationPoint: _destinationPoint,
+          stops: [
+            for (var i = 0; i < _stopControllers.length; i++)
+              if (_stopControllers[i].text.trim().isNotEmpty)
+                (address: _stopControllers[i].text, point: _stopPoints[i]),
+          ],
           distanceKm: _distanceKm,
           fare: fare,
           paymentMethod: _paymentMethod,
@@ -225,6 +249,7 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(savedAddressesProvider);
     final vehiclesAsync = ref.watch(vehiclesListProvider);
 
     return Scaffold(
@@ -378,7 +403,7 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
                             onChanged: (v) => setState(() => _paymentMethod = v ?? 'cash'),
                             child: Column(
                               children: [
-                                ...['cash', 'gcash'].map((method) => RadioListTile<String>(
+                                ...['cash', 'gcash', 'wallet'].map((method) => RadioListTile<String>(
                                       value: method,
                                       dense: true,
                                       contentPadding: EdgeInsets.zero,
@@ -508,6 +533,8 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
     switch (method) {
       case 'gcash':
         return 'GCash';
+      case 'wallet':
+        return 'Wallet';
       case 'card':
         return 'Card';
       default:

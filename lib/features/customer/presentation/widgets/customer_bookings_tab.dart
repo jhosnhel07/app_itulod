@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/utils/app_log.dart';
+import '../../../../core/utils/formatters.dart';
 import '../../../../shared/models/booking_models.dart';
 import '../../../../shared/screens/booking_details_sheet.dart';
 import '../../../../shared/widgets/booking_card.dart';
@@ -11,6 +12,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/customer_repository.dart';
 import 'cancellation_dialog.dart';
 import 'gcash_pay_action.dart';
+import 'support_request_dialog.dart';
 
 final customerHistoryProvider = FutureProvider.autoDispose
     .family<List<BookingBase>, BookingKind>((ref, kind) async {
@@ -49,7 +51,6 @@ class _CustomerBookingsTabState extends ConsumerState<CustomerBookingsTab>
   }
 
   Future<void> _openDetails(BookingBase booking) async {
-    final repo = ref.read(customerRepositoryProvider);
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -76,26 +77,24 @@ class _CustomerBookingsTabState extends ConsumerState<CustomerBookingsTab>
         Widget? payAction;
         if (booking.needsPayment) {
           payAction = AppButton(
-            text: 'Pay with GCash',
+            text: 'Pay ${Formatters.currency(booking.payableAmount)}',
             icon: Icons.account_balance_wallet_rounded,
             onPressed: () {
               Navigator.pop(sheetContext);
-              payBookingWithGcash(context, ref, booking);
+              payBookingOnline(context, ref, booking);
             },
           );
         }
-        Widget? disputeAction;
-        if (booking.status == 'completed' || booking.status == 'cancelled') {
-          disputeAction = AppButton(
-            text: 'Report Issue / Dispute',
-            icon: Icons.report_problem_outlined,
-            type: AppButtonType.secondary,
-            onPressed: () {
-              Navigator.pop(sheetContext);
-              _showDisputeDialog(booking);
-            },
-          );
-        }
+        // Like the web's booking-details modal: any booking can be reported.
+        final disputeAction = AppButton(
+          text: 'Report an issue with this booking',
+          icon: Icons.report_problem_outlined,
+          type: AppButtonType.secondary,
+          onPressed: () {
+            Navigator.pop(sheetContext);
+            showSupportRequestDialog(context, ref, booking: booking);
+          },
+        );
         return BookingDetailsSheet(
           booking: booking,
           actions: [
@@ -105,10 +104,8 @@ class _CustomerBookingsTabState extends ConsumerState<CustomerBookingsTab>
               const SizedBox(height: 8),
               rateAction,
             ],
-            if (disputeAction != null) ...[
-              const SizedBox(height: 8),
-              disputeAction,
-            ],
+            const SizedBox(height: 8),
+            disputeAction,
           ],
         );
       },
@@ -116,64 +113,10 @@ class _CustomerBookingsTabState extends ConsumerState<CustomerBookingsTab>
     ref.invalidate(customerHistoryProvider);
   }
 
-  Future<void> _showDisputeDialog(BookingBase booking) async {
-    final reasonController = TextEditingController();
-    final submitted = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Report an Issue'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Please describe the issue with this booking:', style: AppTypography.captionDark),
-            const SizedBox(height: 8),
-            TextField(
-              controller: reasonController,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                hintText: 'Driver was late, item damaged, overcharged, etc.',
-                isDense: true,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
-            child: const Text('Submit Dispute'),
-          ),
-        ],
-      ),
-    );
-
-    if (submitted == true && reasonController.text.trim().isNotEmpty) {
-      try {
-        await ref.read(customerRepositoryProvider).createDispute(
-          bookingId: booking.id,
-          bookingType: booking.kind.name, // e.g. transport, food, parcel
-          reason: reasonController.text.trim(),
-        );
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Your dispute has been submitted for review.'), backgroundColor: AppColors.success),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not submit dispute: $e'), backgroundColor: AppColors.danger),
-          );
-        }
-      }
-    }
-  }
-
   Future<void> _showRatingDialog(BookingBase booking) async {
     int stars = 5;
     final commentController = TextEditingController();
+    final tipController = TextEditingController();
 
     final submitted = await showDialog<bool>(
       context: context,
@@ -205,6 +148,17 @@ class _CustomerBookingsTabState extends ConsumerState<CustomerBookingsTab>
                   isDense: true,
                 ),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: tipController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Tip your rider (optional)',
+                  prefixText: '₱ ',
+                  helperText: '100% of tips go to the rider',
+                  isDense: true,
+                ),
+              ),
             ],
           ),
           actions: [
@@ -216,15 +170,22 @@ class _CustomerBookingsTabState extends ConsumerState<CustomerBookingsTab>
     );
 
     if (submitted == true) {
+      final tip = double.tryParse(tipController.text.trim());
       try {
         await ref.read(customerRepositoryProvider).submitRating(
               booking,
               stars: stars,
               comment: commentController.text,
+              tip: tip,
             );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Thanks for your feedback!'), backgroundColor: AppColors.success),
+            SnackBar(
+              content: Text(tip != null && tip > 0
+                  ? "Thanks for rating your rider — don't forget the ${Formatters.currency(tip)} tip!"
+                  : 'Thanks for your feedback!'),
+              backgroundColor: AppColors.success,
+            ),
           );
         }
       } catch (e, s) {

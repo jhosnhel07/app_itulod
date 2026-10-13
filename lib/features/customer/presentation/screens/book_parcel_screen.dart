@@ -11,6 +11,7 @@ import '../../../../shared/widgets/app_button.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/customer_repository.dart';
 import '../widgets/location_picker_field.dart';
+import '../widgets/payment_method_selector.dart';
 import '../widgets/route_preview_map.dart';
 import 'map_picker_screen.dart';
 
@@ -40,17 +41,11 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
   final _instructionsController = TextEditingController();
   VehicleModel? _vehicle;
   String _parcelSize = _parcelSizes.first;
-  DateTime? _scheduledFor;
+  String _paymentMethod = 'cash';
   bool _submitting = false;
-  
+
   bool _isRoundTrip = false;
   final _codAmountController = TextEditingController();
-
-  final _promoController = TextEditingController();
-  bool _validatingPromo = false;
-  bool _promoApplied = false;
-  double _promoDiscount = 0.0;
-  String? _appliedPromoCode;
 
   /// Coordinates behind the two address fields — set only by the map picker.
   LatLng? _senderPoint;
@@ -89,50 +84,29 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
       _descriptionController,
       _instructionsController,
       _codAmountController,
-      _promoController,
     ]) {
       c.dispose();
     }
     super.dispose();
   }
 
-  Future<void> _applyPromo() async {
-    final code = _promoController.text.trim();
-    if (code.isEmpty) return;
-    final fare = _fare;
-    if (fare == null) return;
+  /// Optional PH mobile number — same rule as the web's isValidPhoneMobile
+  /// (09XXXXXXXXX, spaces/dashes allowed, +63 accepted).
+  static String? _optionalMobile(String? value) {
+    final raw = (value ?? '').replaceAll(RegExp(r'[\s-]'), '');
+    if (raw.isEmpty) return null;
+    final local = raw.startsWith('+63') ? '0${raw.substring(3)}' : raw;
+    return RegExp(r'^09\d{9}$').hasMatch(local)
+        ? null
+        : 'Enter a valid mobile number (09XX XXX XXXX)';
+  }
 
-    setState(() => _validatingPromo = true);
-    final repo = ref.read(customerRepositoryProvider);
-    final promo = await repo.validatePromoCode(code);
-    
-    if (!mounted) return;
-    if (promo == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invalid or expired promo code'), backgroundColor: AppColors.warning),
-      );
-      setState(() => _validatingPromo = false);
-      return;
-    }
-
-    double discount = 0.0;
-    if (promo['discount_amount'] != null) {
-      discount = (promo['discount_amount'] as num).toDouble();
-    } else if (promo['discount_percent'] != null) {
-      final percent = (promo['discount_percent'] as num).toDouble();
-      discount = fare * (percent / 100);
-      if (promo['max_discount'] != null) {
-        final maxD = (promo['max_discount'] as num).toDouble();
-        if (discount > maxD) discount = maxD;
-      }
-    }
-
-    setState(() {
-      _validatingPromo = false;
-      _promoApplied = true;
-      _promoDiscount = discount;
-      _appliedPromoCode = promo['code'] as String;
-    });
+  static String? _personName(String? value, String label) {
+    final v = (value ?? '').trim();
+    if (v.isEmpty) return 'Enter the $label name';
+    return RegExp(r"^[A-Za-zÀ-ÿñÑ .'-]+$").hasMatch(v)
+        ? null
+        : '$label name should be letters only';
   }
 
   static String? _nullIfEmpty(String value) =>
@@ -207,16 +181,17 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
             parcelDescription: _descriptionController.text,
             instructions: _instructionsController.text,
             distanceKm: _distanceKm,
-            scheduledFor: _scheduledFor,
-            promoCode: _appliedPromoCode,
+            paymentMethod: _paymentMethod,
             isRoundTrip: _isRoundTrip,
             codAmount: double.tryParse(_codAmountController.text) ?? 0.0,
           );
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Parcel booked! Pay the rider on completion.'),
+        SnackBar(
+          content: Text(_paymentMethod == 'cash'
+              ? 'Parcel delivery requested! Pay the rider in cash.'
+              : 'Parcel delivery requested! We\'ll ask you to pay once the rider confirms the fare at pickup.'),
           backgroundColor: AppColors.success,
         ),
       );
@@ -225,7 +200,7 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Booking failed: $e'),
+              content: Text('Booking failed: ${e.toString().replaceFirst('Exception: ', '')}'),
               backgroundColor: AppColors.danger),
         );
       }
@@ -263,16 +238,15 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
                         controller: _senderNameController,
                         decoration:
                             const InputDecoration(hintText: 'Your name *'),
-                        validator: (v) => v == null || v.trim().isEmpty
-                            ? 'Enter the sender name'
-                            : null,
+                        validator: (v) => _personName(v, 'Sender'),
                       ),
                       const SizedBox(height: 14),
                       TextFormField(
                         controller: _senderPhoneController,
                         keyboardType: TextInputType.phone,
                         decoration:
-                            const InputDecoration(hintText: 'Contact number'),
+                            const InputDecoration(hintText: 'Contact number (09XX XXX XXXX)'),
+                        validator: _optionalMobile,
                       ),
                       const SizedBox(height: 14),
                       LocationPickerField(
@@ -292,16 +266,15 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
                         controller: _receiverNameController,
                         decoration:
                             const InputDecoration(hintText: 'Receiver name *'),
-                        validator: (v) => v == null || v.trim().isEmpty
-                            ? 'Enter the receiver name'
-                            : null,
+                        validator: (v) => _personName(v, 'Receiver'),
                       ),
                       const SizedBox(height: 14),
                       TextFormField(
                         controller: _receiverPhoneController,
                         keyboardType: TextInputType.phone,
                         decoration:
-                            const InputDecoration(hintText: 'Contact number'),
+                            const InputDecoration(hintText: 'Contact number (09XX XXX XXXX)'),
+                        validator: _optionalMobile,
                       ),
                       const SizedBox(height: 14),
                       LocationPickerField(
@@ -378,7 +351,7 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
                             subtitle: const Text('Rider will return to pickup address'),
                             value: _isRoundTrip,
                             onChanged: (v) => setState(() => _isRoundTrip = v),
-                            activeColor: AppColors.primary,
+                            activeThumbColor: AppColors.primary,
                           ),
                           const SizedBox(height: 8),
                           TextFormField(
@@ -408,77 +381,10 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
                     onChanged: (v) => setState(() => _vehicle = v),
                   ),
                   const SizedBox(height: 16),
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.schedule_rounded),
-                      title: Text(_scheduledFor == null ? 'Schedule for later (Optional)' : 'Scheduled for ${Formatters.date(_scheduledFor!)}'),
-                      trailing: _scheduledFor == null
-                          ? const Icon(Icons.chevron_right_rounded)
-                          : IconButton(
-                              icon: const Icon(Icons.close_rounded),
-                              onPressed: () => setState(() => _scheduledFor = null),
-                            ),
-                      onTap: () async {
-                        final date = await showDatePicker(
-                          context: context,
-                          initialDate: DateTime.now(),
-                          firstDate: DateTime.now(),
-                          lastDate: DateTime.now().add(const Duration(days: 7)),
-                        );
-                        if (date == null) return;
-                        if (!mounted) return;
-                        final time = await showTimePicker(
-                          context: context,
-                          initialTime: TimeOfDay.now(),
-                        );
-                        if (time == null) return;
-                        setState(() {
-                          _scheduledFor = DateTime(date.year, date.month, date.day, time.hour, time.minute);
-                        });
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Promo code', style: AppTypography.bodyBold),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextFormField(
-                                  controller: _promoController,
-                                  decoration: const InputDecoration(
-                                    hintText: 'Enter promo code',
-                                    contentPadding: EdgeInsets.symmetric(horizontal: 16),
-                                  ),
-                                  onChanged: (v) {
-                                    if (_promoApplied) {
-                                      setState(() {
-                                        _promoApplied = false;
-                                        _promoDiscount = 0.0;
-                                        _appliedPromoCode = null;
-                                      });
-                                    }
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              OutlinedButton(
-                                onPressed: _validatingPromo || _promoApplied || !_hasBothPoints ? null : _applyPromo,
-                                child: _validatingPromo 
-                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                                    : Text(_promoApplied ? 'Applied' : 'Apply'),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
+                  PaymentMethodSelector(
+                    value: _paymentMethod,
+                    onChanged: (v) => setState(() => _paymentMethod = v),
+                    onlineNote: 'You\'ll be asked to pay once the rider confirms the fare at pickup.',
                   ),
                   const SizedBox(height: 16),
                   _fareBox(),
@@ -503,7 +409,7 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
 
     final baseFare = _vehicle?.baseFare ?? 0.0;
     final distanceFare = (fare != null) ? fare - baseFare : null;
-    final total = fare != null ? (fare - _promoDiscount).clamp(0, double.infinity) : null;
+    final total = fare;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -561,16 +467,6 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
                 Text(Formatters.currency(distanceFare!), style: AppTypography.caption.copyWith(color: AppColors.neutral700)),
               ],
             ),
-            if (_promoApplied) ...[
-              const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Promo Discount', style: AppTypography.caption.copyWith(color: AppColors.success)),
-                  Text('-${Formatters.currency(_promoDiscount)}', style: AppTypography.caption.copyWith(color: AppColors.success)),
-                ],
-              ),
-            ],
           ],
           const SizedBox(height: 12),
           Row(

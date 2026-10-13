@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../../shared/models/booking_models.dart';
 import '../../../../shared/models/vehicle_model.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -13,32 +15,35 @@ import 'booking_receipt_screen.dart';
 /// is actually created — a last look at the fare and trip details with a
 /// single Confirm action.
 ///
-/// This screen only places the booking. GCash payment (when chosen) happens
-/// afterwards, from the Home tab's active booking card or My Bookings — it is
-/// never started inline here.
+/// This screen only places the booking. GCash/wallet payment (when chosen)
+/// happens afterwards, from the Home tab's active booking card or My
+/// Bookings — it is never started inline here. Tips are given after the trip
+/// from the rating dialog (the server only credits a tip once the booking is
+/// completed).
 class BookingConfirmationScreen extends ConsumerStatefulWidget {
   final VehicleModel vehicle;
   final String pickupAddress;
   final String destinationAddress;
+  final LatLng? pickupPoint;
+  final LatLng? destinationPoint;
   final double? distanceKm;
   final double fare;
   final String paymentMethod;
   final DateTime? scheduledFor;
-
-  final List<String>? stops;
-  final String? promoCode;
+  final List<({String address, LatLng? point})> stops;
 
   const BookingConfirmationScreen({
     super.key,
     required this.vehicle,
     required this.pickupAddress,
     required this.destinationAddress,
+    this.pickupPoint,
+    this.destinationPoint,
     required this.distanceKm,
     required this.fare,
     required this.paymentMethod,
     this.scheduledFor,
-    this.stops,
-    this.promoCode,
+    this.stops = const [],
   });
 
   @override
@@ -47,15 +52,13 @@ class BookingConfirmationScreen extends ConsumerStatefulWidget {
 
 class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationScreen> {
   bool _processing = false;
-  double _tipAmount = 0.0;
   final _promoController = TextEditingController();
   bool _validatingPromo = false;
-  bool _promoApplied = false;
-  double _promoDiscount = 0.0;
-  String? _appliedPromoCode;
+  PromoPreview? _promo;
 
-  bool get _isGcash => widget.paymentMethod == 'gcash';
-  double get _total => (widget.fare - _promoDiscount).clamp(0, double.infinity) + _tipAmount;
+  bool get _paysOnline => widget.paymentMethod == 'gcash' || widget.paymentMethod == 'wallet';
+  double get _discount => _promo?.discount ?? 0;
+  double get _total => (widget.fare - _discount).clamp(0, double.infinity).toDouble();
 
   @override
   void dispose() {
@@ -68,63 +71,69 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
     if (code.isEmpty) return;
 
     setState(() => _validatingPromo = true);
-    final repo = ref.read(customerRepositoryProvider);
-    final promo = await repo.validatePromoCode(code);
-    
+    PromoPreview preview;
+    try {
+      preview = await ref.read(customerRepositoryProvider).previewPromo(code, widget.fare);
+    } catch (e) {
+      preview = const PromoPreview.invalid('Could not check that code right now.');
+    }
     if (!mounted) return;
-    if (promo == null) {
+    setState(() => _validatingPromo = false);
+    if (!preview.isValid) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invalid or expired promo code'), backgroundColor: AppColors.warning),
+        SnackBar(content: Text(preview.error!), backgroundColor: AppColors.warning),
       );
-      setState(() => _validatingPromo = false);
       return;
     }
-
-    double discount = 0.0;
-    if (promo['discount_amount'] != null) {
-      discount = (promo['discount_amount'] as num).toDouble();
-    } else if (promo['discount_percent'] != null) {
-      final percent = (promo['discount_percent'] as num).toDouble();
-      discount = widget.fare * (percent / 100);
-      if (promo['max_discount'] != null) {
-        final maxD = (promo['max_discount'] as num).toDouble();
-        if (discount > maxD) discount = maxD;
-      }
-    }
-
-    setState(() {
-      _validatingPromo = false;
-      _promoApplied = true;
-      _promoDiscount = discount;
-      _appliedPromoCode = promo['code'] as String;
-    });
+    setState(() => _promo = preview);
   }
 
   Future<void> _confirm() async {
     setState(() => _processing = true);
     final repo = ref.read(customerRepositoryProvider);
+    final messenger = ScaffoldMessenger.of(context);
     try {
       final profile = ref.read(authNotifierProvider).profile!;
-      final booking = await repo.createTransportBooking(
+      BookingBase booking = await repo.createTransportBooking(
         customerId: profile.id,
         vehicle: widget.vehicle,
         pickupAddress: widget.pickupAddress,
         destinationAddress: widget.destinationAddress,
+        pickupPoint: widget.pickupPoint,
+        destinationPoint: widget.destinationPoint,
         paymentMethod: widget.paymentMethod,
         distanceKm: widget.distanceKm,
-        tipAmount: _tipAmount,
         scheduledFor: widget.scheduledFor,
-        promoCode: _appliedPromoCode,
         stops: widget.stops,
       );
 
-      // The booking is placed only — GCash checkout (when chosen) is started
+      // The promo is redeemed server-side against the placed booking; a
+      // rejection (already used, expired…) leaves the ride booked at full fare.
+      final promo = _promo;
+      if (promo != null && promo.code != null) {
+        try {
+          final saved = await repo.redeemPromo(code: promo.code!, bookingId: booking.id);
+          messenger.showSnackBar(SnackBar(
+            content: Text('Promo applied — you saved ${Formatters.currency(saved)}!'),
+            backgroundColor: AppColors.success,
+          ));
+          final refreshed = await repo.fetchHistory(BookingKind.transport, profile.id);
+          booking = refreshed.firstWhere((b) => b.id == booking.id, orElse: () => booking);
+        } catch (e) {
+          messenger.showSnackBar(SnackBar(
+            content: Text('Ride booked, but the promo was not applied: ${_clean(e)}'),
+            backgroundColor: AppColors.warning,
+          ));
+        }
+      }
+
+      // The booking is placed only — online payment (when chosen) is started
       // later from Home or My Bookings, not inline here.
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => BookingReceiptScreen(
-            booking: booking,
+            booking: booking as TransportBookingModel,
             checkoutAttempted: false,
           ),
         ),
@@ -132,13 +141,15 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
       return;
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Booking failed: $e'), backgroundColor: AppColors.danger),
+        messenger.showSnackBar(
+          SnackBar(content: Text('Booking failed: ${_clean(e)}'), backgroundColor: AppColors.danger),
         );
       }
     }
     if (mounted) setState(() => _processing = false);
   }
+
+  static String _clean(Object e) => e.toString().replaceFirst('Exception: ', '');
 
   @override
   Widget build(BuildContext context) {
@@ -159,53 +170,14 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
                     Text('Trip details', style: AppTypography.bodyBold),
                     const SizedBox(height: 12),
                     _row('From', widget.pickupAddress),
+                    for (var i = 0; i < widget.stops.length; i++)
+                      _row('Stop ${i + 1}', widget.stops[i].address),
                     _row('To', widget.destinationAddress),
                     _row('Vehicle', widget.vehicle.name),
                     _row('Distance', Formatters.distance(widget.distanceKm)),
                     if (widget.scheduledFor != null)
-                      _row('Scheduled For', Formatters.date(widget.scheduledFor!)),
-                    _row('Payment method', _methodLabel(widget.paymentMethod)),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Add a tip for your rider', style: AppTypography.bodyBold),
-                    const SizedBox(height: 4),
-                    Text('100% of tips go to the rider', style: AppTypography.caption),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [0.0, 20.0, 50.0, 100.0].map((amount) {
-                        final selected = _tipAmount == amount;
-                        return InkWell(
-                          onTap: () => setState(() => _tipAmount = amount),
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: selected ? AppColors.primary : Colors.transparent,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: selected ? AppColors.primary : AppColors.cardBorder,
-                              ),
-                            ),
-                            child: Text(
-                              amount == 0 ? 'No tip' : '₱\${amount.toInt()}',
-                              style: AppTypography.bodyBold.copyWith(
-                                color: selected ? Colors.white : AppColors.neutral700,
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
+                      _row('Scheduled for', Formatters.date(widget.scheduledFor!)),
+                    _row('Payment method', paymentMethodLabel(widget.paymentMethod)),
                   ],
                 ),
               ),
@@ -224,27 +196,22 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
                         Expanded(
                           child: TextFormField(
                             controller: _promoController,
+                            textCapitalization: TextCapitalization.characters,
                             decoration: const InputDecoration(
                               hintText: 'Enter promo code',
                               contentPadding: EdgeInsets.symmetric(horizontal: 16),
                             ),
-                            onChanged: (v) {
-                              if (_promoApplied) {
-                                setState(() {
-                                  _promoApplied = false;
-                                  _promoDiscount = 0.0;
-                                  _appliedPromoCode = null;
-                                });
-                              }
+                            onChanged: (_) {
+                              if (_promo != null) setState(() => _promo = null);
                             },
                           ),
                         ),
                         const SizedBox(width: 12),
                         OutlinedButton(
-                          onPressed: _validatingPromo || _promoApplied ? null : _applyPromo,
-                          child: _validatingPromo 
+                          onPressed: _validatingPromo || _promo != null ? null : _applyPromo,
+                          child: _validatingPromo
                               ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                              : Text(_promoApplied ? 'Applied' : 'Apply'),
+                              : Text(_promo != null ? 'Applied' : 'Apply'),
                         ),
                       ],
                     ),
@@ -262,27 +229,14 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
               ),
               child: Column(
                 children: [
-                  if (_promoApplied) ...[
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Base Fare', style: AppTypography.caption.copyWith(color: Colors.white70)),
-                        Text(Formatters.currency(widget.fare), style: AppTypography.caption.copyWith(color: Colors.white70)),
-                      ],
-                    ),
+                  if (_promo != null) ...[
+                    _totalRow('Fare', Formatters.currency(widget.fare)),
                     const SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Promo Discount', style: AppTypography.caption.copyWith(color: Colors.white70)),
-                        Text('-${Formatters.currency(_promoDiscount)}', style: AppTypography.caption.copyWith(color: Colors.white70)),
-                      ],
-                    ),
+                    _totalRow('Promo discount', '-${Formatters.currency(_discount)}'),
                     const SizedBox(height: 12),
                   ],
                   Text('TOTAL AMOUNT',
-                      style: AppTypography.overline
-                          .copyWith(color: Colors.white70)),
+                      style: AppTypography.overline.copyWith(color: Colors.white70)),
                   const SizedBox(height: 6),
                   Text(Formatters.currency(_total),
                       style: AppTypography.display.copyWith(color: Colors.white)),
@@ -290,10 +244,9 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
               ),
             ),
             const SizedBox(height: 24),
-            if (_isGcash) ...[
-              const SizedBox(height: 4),
+            if (_paysOnline) ...[
               Text(
-                'You\'ll pay via GCash after booking — from Home or My Bookings.',
+                'You\'ll pay with ${paymentMethodLabel(widget.paymentMethod)} after booking — from Home or My Bookings.',
                 style: AppTypography.caption.copyWith(color: AppColors.neutral500),
                 textAlign: TextAlign.center,
               ),
@@ -311,6 +264,14 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
     );
   }
 
+  Widget _totalRow(String label, String value) => Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: AppTypography.caption.copyWith(color: Colors.white70)),
+          Text(value, style: AppTypography.caption.copyWith(color: Colors.white70)),
+        ],
+      );
+
   Widget _row(String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -323,6 +284,19 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
       ),
     );
   }
+}
 
-  String _methodLabel(String method) => method == 'gcash' ? 'GCash' : 'Cash on arrival';
+/// Human label for a booking's payment method — shared by the booking forms,
+/// confirmation, and details screens.
+String paymentMethodLabel(String? method) {
+  switch (method) {
+    case 'gcash':
+      return 'GCash';
+    case 'wallet':
+      return 'Wallet';
+    case 'card':
+      return 'Card';
+    default:
+      return 'Cash';
+  }
 }

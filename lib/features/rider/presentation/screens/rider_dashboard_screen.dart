@@ -13,40 +13,63 @@ import '../widgets/rider_history_tab.dart';
 import '../widgets/rider_home_tab.dart';
 import '../widgets/rider_requests_tab.dart';
 import '../widgets/rider_trip_tab.dart';
+import '../../../../shared/models/booking_models.dart';
+import '../../data/rider_location_broadcaster.dart';
+import '../../data/rider_repository.dart';
 
 final riderOnlineStatusProvider = StateNotifierProvider<RiderOnlineNotifier, AsyncValue<bool>>((ref) {
   final profile = ref.watch(authNotifierProvider).profile;
-  if (profile == null) return RiderOnlineNotifier(null, null);
-  final repo = ref.read(riderRepositoryProvider);
-  return RiderOnlineNotifier(repo, profile.id);
+  if (profile == null) return RiderOnlineNotifier(null, null, null);
+  return RiderOnlineNotifier(
+    ref.read(riderRepositoryProvider),
+    ref.read(riderLocationBroadcasterProvider),
+    profile.id,
+  );
 });
 
+/// "Go online" = start sharing GPS so customers see this rider in "riders
+/// near you" (the row needs real coordinates — `is_online` alone does
+/// nothing). Mirrors the web's wireOnlineToggle()/initOnlineStatus().
 class RiderOnlineNotifier extends StateNotifier<AsyncValue<bool>> {
   final RiderRepository? _repo;
+  final RiderLocationBroadcaster? _broadcaster;
   final String? _riderId;
 
-  RiderOnlineNotifier(this._repo, this._riderId) : super(const AsyncValue.loading()) {
+  RiderOnlineNotifier(this._repo, this._broadcaster, this._riderId)
+      : super(const AsyncValue.loading()) {
     _load();
   }
 
   Future<void> _load() async {
-    if (_repo == null || _riderId == null) {
+    final repo = _repo, broadcaster = _broadcaster, riderId = _riderId;
+    if (repo == null || broadcaster == null || riderId == null) {
       state = const AsyncValue.data(false);
       return;
     }
-    final isOnline = await _repo!.fetchOnlineStatus(_riderId!);
-    state = AsyncValue.data(isOnline);
+    final wasOnline = await repo.fetchOnlineStatus(riderId);
+    if (!wasOnline) {
+      state = const AsyncValue.data(false);
+      return;
+    }
+    // Resume broadcasting after an app restart, like the web on reload.
+    final problem = await broadcaster.goOnline(riderId);
+    if (problem != null) await broadcaster.goOffline(riderId);
+    if (mounted) state = AsyncValue.data(problem == null);
   }
 
-  Future<void> setOnline(bool isOnline) async {
-    if (_repo == null || _riderId == null) return;
-    state = AsyncValue.data(isOnline);
-    try {
-      await _repo!.setOnlineStatus(_riderId!, isOnline);
-    } catch (e) {
-      // Revert on failure
-      state = AsyncValue.data(!isOnline);
+  /// Returns a user-facing error when going online failed.
+  Future<String?> setOnline(bool isOnline) async {
+    final broadcaster = _broadcaster, riderId = _riderId;
+    if (broadcaster == null || riderId == null) return null;
+    if (!isOnline) {
+      state = const AsyncValue.data(false);
+      await broadcaster.goOffline(riderId);
+      return null;
     }
+    state = const AsyncValue.data(true);
+    final problem = await broadcaster.goOnline(riderId);
+    if (problem != null && mounted) state = const AsyncValue.data(false);
+    return problem;
   }
 }
 
@@ -68,6 +91,21 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
   @override
   void initState() {
     super.initState();
+    // Live GPS to the customer while a job is accepted/ongoing — the web's
+    // startLocationBroadcast() in loadAccepted().
+    ref.listenManual<AsyncValue<List<BookingBase>>>(
+      riderActiveBookingsProvider,
+      (_, next) {
+        final riderId = ref.read(authNotifierProvider).profile?.id;
+        if (riderId == null || !next.hasValue) return;
+        final active = next.value!;
+        final primary = active.isEmpty
+            ? null
+            : active.firstWhere((b) => b.status == 'ongoing', orElse: () => active.first);
+        ref.read(riderLocationBroadcasterProvider).setActiveJob(riderId, primary);
+      },
+      fireImmediately: true,
+    );
     startRealtime(
       channelName: 'rider-dashboard',
       tables: const [
@@ -162,16 +200,26 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
                   if (approved) ...[
                     Text(
                       onlineAsync.valueOrNull == true ? 'Online' : 'Offline',
-                      style: AppTypography.captionBold.copyWith(
+                      style: AppTypography.caption.copyWith(
+                        fontWeight: FontWeight.w700,
                         color: onlineAsync.valueOrNull == true ? AppColors.success : Colors.white70,
                       ),
                     ),
                     Switch(
                       value: onlineAsync.valueOrNull ?? false,
-                      onChanged: (val) {
-                        ref.read(riderOnlineStatusProvider.notifier).setOnline(val);
+                      onChanged: (val) async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        final problem = await ref
+                            .read(riderOnlineStatusProvider.notifier)
+                            .setOnline(val);
+                        if (problem != null) {
+                          messenger.showSnackBar(SnackBar(
+                            content: Text(problem),
+                            backgroundColor: AppColors.danger,
+                          ));
+                        }
                       },
-                      activeColor: AppColors.success,
+                      activeThumbColor: AppColors.success,
                       activeTrackColor: Colors.white24,
                       inactiveTrackColor: Colors.white12,
                     ),
@@ -186,7 +234,7 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
       ),
       body: Column(
         children: [
-          if (!approved) _approvalBanner(),
+          if (!approved) _approvalBanner(application?.status),
           Expanded(child: SafeArea(top: false, child: tabs[_index])),
         ],
       ),
@@ -235,7 +283,8 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
     );
   }
 
-  Widget _approvalBanner() {
+  Widget _approvalBanner(ApplicationStatus? status) {
+    final rejected = status == ApplicationStatus.rejected;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
@@ -253,13 +302,15 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
               color: AppColors.warning.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.hourglass_top_rounded,
+            child: Icon(rejected ? Icons.cancel_outlined : Icons.hourglass_top_rounded,
                 color: AppColors.warning, size: 18),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Your application is pending admin approval — you can browse but not accept bookings yet.',
+              rejected
+                  ? 'Your application was rejected. Contact support if you think this was a mistake.'
+                  : 'Your application is pending admin approval — you can browse but not accept bookings yet.',
               style: AppTypography.captionDark.copyWith(fontSize: 12.5),
             ),
           ),

@@ -13,9 +13,10 @@ import '../../data/customer_repository.dart';
 import '../screens/book_food_screen.dart';
 import '../screens/book_parcel_screen.dart';
 import '../screens/book_ride_screen.dart';
-import 'customer_bookings_tab.dart' show authProfileIdProvider, customerHistoryProvider;
+import 'customer_bookings_tab.dart' show authProfileIdProvider;
 import 'cancellation_dialog.dart';
 import 'gcash_pay_action.dart';
+import 'support_request_dialog.dart';
 import '../../../chat/presentation/screens/chat_screen.dart' as import_chat;
 
 /// Lifetime stats + the booking currently in flight. Refreshed by realtime.
@@ -318,28 +319,42 @@ class _ActiveBookingCard extends ConsumerWidget {
                             .copyWith(color: AppColors.primaryDark)),
                   ],
                 ),
+                if (b.awaitingFinalFare) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    "We'll ask you to pay once the rider confirms the fare at pickup.",
+                    style: AppTypography.caption.copyWith(fontSize: 11.5),
+                  ),
+                ],
                 if (b.needsPayment) ...[
                   const SizedBox(height: 12),
                   AppButton(
-                    text: 'Pay with GCash',
+                    text: 'Pay ${Formatters.currency(b.payableAmount)}',
                     icon: Icons.account_balance_wallet_rounded,
-                    onPressed: () => payBookingWithGcash(context, ref, b),
+                    onPressed: () => payBookingOnline(context, ref, b),
                   ),
                 ],
-                if (b.status == 'accepted' || b.status == 'ongoing') ...[
+                if (b.canSendChat) ...[
                   const SizedBox(height: 12),
-                  AppButton(
-                    text: 'Chat with Rider',
-                    icon: Icons.chat_bubble_outline_rounded,
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              import_chat.ChatScreen(bookingId: b.id),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: AppButton(
+                          text: 'Track rider',
+                          icon: Icons.map_outlined,
+                          type: AppButtonType.outline,
+                          onPressed: () => _openDetails(context, ref, b),
                         ),
-                      );
-                    },
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: AppButton(
+                          text: 'Chat',
+                          icon: Icons.chat_bubble_outline_rounded,
+                          onPressed: () => Navigator.push(context, import_chat.ChatScreen.route(b)),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
                 const SizedBox(height: 14),
@@ -386,15 +401,26 @@ class _ActiveBookingCard extends ConsumerWidget {
       builder: (sheetContext) => BookingDetailsSheet(
         booking: booking,
         actions: [
-          if (booking.needsPayment)
+          if (booking.needsPayment) ...[
             AppButton(
-              text: 'Pay with GCash',
+              text: 'Pay ${Formatters.currency(booking.payableAmount)}',
               icon: Icons.account_balance_wallet_rounded,
               onPressed: () {
                 Navigator.pop(sheetContext);
-                payBookingWithGcash(context, ref, booking);
+                payBookingOnline(context, ref, booking);
               },
             ),
+            const SizedBox(height: 8),
+          ],
+          AppButton(
+            text: 'Report an issue with this booking',
+            icon: Icons.report_problem_outlined,
+            type: AppButtonType.secondary,
+            onPressed: () {
+              Navigator.pop(sheetContext);
+              showSupportRequestDialog(context, ref, booking: booking);
+            },
+          ),
         ],
       ),
     );

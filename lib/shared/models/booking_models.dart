@@ -49,12 +49,15 @@ class BookingBase {
   final BookingKind kind;
   final String customerId;
   final String? riderId;
+  final String? vehicleId;
   // pending | accepted | ongoing | completed | cancelled | expired | no_show
   final String status;
   final double? estimatedFare;
   final double? finalFare;
-  final String? paymentMethod; // cash | gcash | card
+  final String? paymentMethod; // cash | gcash | wallet | card (legacy)
   final String? paymentStatus; // pending | paid | failed | refunded
+  /// PayMongo source/session reference — set once a GCash checkout started.
+  final String? paymongoReference;
   final int? rating;
   final String? review;
   final String? cancelledReason;
@@ -62,31 +65,35 @@ class BookingBase {
   /// The moment a rider was confirmed onto this booking — the anchor for the
   /// post-acceptance grace period. Null until a rider accepts.
   final DateTime? acceptedAt;
+  final double? distanceKm;
 
   final double? tipAmount;
   final double? cancellationFee;
-  final DateTime? scheduledFor;
   final String? promoCode;
+  final double? discountAmount;
 
   const BookingBase({
     required this.id,
     required this.kind,
     required this.customerId,
     this.riderId,
+    this.vehicleId,
     required this.status,
     this.estimatedFare,
     this.finalFare,
     this.paymentMethod,
     this.paymentStatus,
+    this.paymongoReference,
     this.rating,
     this.review,
     this.cancelledReason,
     required this.createdAt,
     this.acceptedAt,
+    this.distanceKm,
     this.tipAmount,
     this.cancellationFee,
-    this.scheduledFor,
     this.promoCode,
+    this.discountAmount,
   });
 
   bool get isActive => status == 'pending' || status == 'accepted' || status == 'ongoing';
@@ -94,6 +101,11 @@ class BookingBase {
   bool get canRate => status == 'completed' && rating == null;
   bool get isExpired => status == 'expired';
   bool get isNoShow => status == 'no_show';
+
+  /// Chat opens once a rider is assigned; RLS only accepts new messages while
+  /// the booking is accepted/ongoing.
+  bool get hasRider => riderId != null && riderId!.isNotEmpty;
+  bool get canSendChat => hasRider && (status == 'accepted' || status == 'ongoing');
 
   /// A booking that can no longer be edited, confirmed, or acted on by
   /// anyone but the system/admin.
@@ -103,34 +115,52 @@ class BookingBase {
       status == 'expired' ||
       status == 'no_show';
 
-  bool get needsPayment =>
-      kind == BookingKind.transport &&
-      paymentMethod != null &&
-      paymentMethod != 'cash' &&
-      (paymentStatus == 'pending' || paymentStatus == 'failed') &&
-      status != 'cancelled' &&
-      status != 'expired';
+  /// What `create-payment` will charge: a ride's fare is known at booking
+  /// time; food/parcel only once the rider confirms it (finalize-fare).
+  /// Mirrors the web's `paymentDue()` in customer.js.
+  double? get payableAmount =>
+      kind == BookingKind.transport ? estimatedFare : finalFare;
 
-  /// When this booking is due to auto-expire under the 15-minute grace
-  /// period, or null once it's moved past the pending/accepted stages.
-  DateTime? get expiresAt {
-    if (status == 'pending') {
-      return createdAt.add(const Duration(minutes: gracePeriodMinutes));
+  /// Still owes a GCash/wallet payment — same rule as the web's
+  /// `paymentDue()`. Cash bookings never do.
+  bool get needsPayment =>
+      (paymentMethod == 'gcash' || paymentMethod == 'wallet') &&
+      (paymentStatus == null || paymentStatus == 'pending' || paymentStatus == 'failed') &&
+      status != 'cancelled' &&
+      status != 'expired' &&
+      status != 'no_show' &&
+      (payableAmount ?? 0) > 0;
+
+  /// Food/parcel paid online but the rider hasn't confirmed the fare yet —
+  /// the customer is told the payment step is coming.
+  bool get awaitingFinalFare =>
+      kind != BookingKind.transport &&
+      (paymentMethod == 'gcash' || paymentMethod == 'wallet') &&
+      finalFare == null &&
+      !isTerminal;
+
+  String get displayFare => Formatters.currency(finalFare ?? estimatedFare);
+
+  String get pickupLine {
+    switch (kind) {
+      case BookingKind.transport:
+        return (this as TransportBookingModel).pickupAddress;
+      case BookingKind.food:
+        return (this as FoodDeliveryModel).pickupAddress;
+      case BookingKind.parcel:
+        return (this as ParcelDeliveryModel).senderAddress;
     }
-    if (status == 'accepted' && acceptedAt != null) {
-      return acceptedAt!.add(const Duration(minutes: gracePeriodMinutes));
-    }
-    return null;
   }
 
-  String get displayFare {
-    if (kind == BookingKind.food) {
-      final b = this as FoodDeliveryModel;
-      final foodTotal = b.actualFoodCost ?? b.totalItemsPrice ?? 0.0;
-      final deliveryFee = finalFare ?? estimatedFare ?? 0.0;
-      return Formatters.currency(foodTotal + deliveryFee);
+  String get dropoffLine {
+    switch (kind) {
+      case BookingKind.transport:
+        return (this as TransportBookingModel).destinationAddress;
+      case BookingKind.food:
+        return (this as FoodDeliveryModel).deliveryAddress;
+      case BookingKind.parcel:
+        return (this as ParcelDeliveryModel).receiverAddress;
     }
-    return Formatters.currency(finalFare ?? estimatedFare);
   }
 
   String get routeLine {
@@ -147,49 +177,55 @@ class BookingBase {
     }
   }
 
-  Map<String, dynamic> baseJson() => {
-        'id': id,
-        'customer_id': customerId,
-        'rider_id': riderId,
-        'status': status,
-        'estimated_fare': estimatedFare,
-        'final_fare': finalFare,
-        'payment_method': paymentMethod,
-        'payment_status': paymentStatus,
-        'rating': rating,
-        'review': review,
-        'cancelled_reason': cancelledReason,
-        'created_at': createdAt.toIso8601String(),
-        'accepted_at': acceptedAt?.toIso8601String(),
-        'tip_amount': tipAmount,
-        'cancellation_fee': cancellationFee,
-        'scheduled_for': scheduledFor?.toIso8601String(),
-        'promo_code': promoCode,
-      };
+  /// Proof-of-delivery photo (food/parcel only).
+  String? get deliveryProofUrl => null;
+
+  /// When this booking is due to auto-expire under the 15-minute grace
+  /// period, or null once it's moved past the pending/accepted stages.
+  DateTime? get expiresAt {
+    if (status == 'pending') {
+      return createdAt.add(const Duration(minutes: gracePeriodMinutes));
+    }
+    if (status == 'accepted' && acceptedAt != null) {
+      return acceptedAt!.add(const Duration(minutes: gracePeriodMinutes));
+    }
+    return null;
+  }
 }
 
 DateTime? _parseTimestamp(Object? value) =>
     value == null ? null : DateTime.tryParse(value as String);
 
+double? _num(Object? v) => (v as num?)?.toDouble();
+
 class TransportBookingModel extends BookingBase {
-  final String vehicleId;
   final String pickupAddress;
   final String destinationAddress;
-  final double? distanceKm;
+  final double? pickupLat;
+  final double? pickupLng;
+  final double? destinationLat;
+  final double? destinationLng;
+  final DateTime? scheduledFor;
 
   const TransportBookingModel({
     required super.id,
     required super.customerId,
-    required this.vehicleId,
+    super.vehicleId,
     required this.pickupAddress,
     required this.destinationAddress,
-    this.distanceKm,
+    this.pickupLat,
+    this.pickupLng,
+    this.destinationLat,
+    this.destinationLng,
+    this.scheduledFor,
+    super.distanceKm,
     super.riderId,
     required super.status,
     super.estimatedFare,
     super.finalFare,
     super.paymentMethod,
     super.paymentStatus,
+    super.paymongoReference,
     super.rating,
     super.review,
     super.cancelledReason,
@@ -197,33 +233,39 @@ class TransportBookingModel extends BookingBase {
     super.acceptedAt,
     super.tipAmount,
     super.cancellationFee,
-    super.scheduledFor,
     super.promoCode,
+    super.discountAmount,
   }) : super(kind: BookingKind.transport);
 
   factory TransportBookingModel.fromJson(Map<String, dynamic> json) {
     return TransportBookingModel(
       id: json['id'] as String,
       customerId: json['customer_id'] as String,
-      vehicleId: json['vehicle_id'] as String? ?? '',
+      vehicleId: json['vehicle_id'] as String?,
       pickupAddress: json['pickup_address'] as String? ?? '',
       destinationAddress: json['destination_address'] as String? ?? '',
-      distanceKm: (json['distance_km'] as num?)?.toDouble(),
+      pickupLat: _num(json['pickup_lat']),
+      pickupLng: _num(json['pickup_lng']),
+      destinationLat: _num(json['destination_lat']),
+      destinationLng: _num(json['destination_lng']),
+      scheduledFor: _parseTimestamp(json['scheduled_for']),
+      distanceKm: _num(json['distance_km']),
       riderId: json['rider_id'] as String?,
       status: json['status'] as String? ?? 'pending',
-      estimatedFare: (json['estimated_fare'] as num?)?.toDouble(),
-      finalFare: (json['final_fare'] as num?)?.toDouble(),
+      estimatedFare: _num(json['estimated_fare']),
+      finalFare: _num(json['final_fare']),
       paymentMethod: json['payment_method'] as String?,
       paymentStatus: json['payment_status'] as String?,
+      paymongoReference: json['paymongo_reference'] as String?,
       rating: json['rating'] as int?,
       review: json['review'] as String?,
       cancelledReason: json['cancelled_reason'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
       acceptedAt: _parseTimestamp(json['accepted_at']),
-      tipAmount: (json['tip_amount'] as num?)?.toDouble(),
-      cancellationFee: (json['cancellation_fee'] as num?)?.toDouble(),
-      scheduledFor: _parseTimestamp(json['scheduled_for']),
+      tipAmount: _num(json['tip_amount']),
+      cancellationFee: _num(json['cancellation_fee']),
       promoCode: json['promo_code'] as String?,
+      discountAmount: _num(json['discount_amount']),
     );
   }
 }
@@ -233,13 +275,15 @@ class FoodDeliveryModel extends BookingBase {
   final String pickupAddress;
   final String deliveryAddress;
   final String instructions;
-  final String vehicleId;
-  final double? distanceKm;
   final String? restaurantId;
-  final List<dynamic>? items;
-  final double? totalItemsPrice;
+  /// Cart total at checkout (sum of `food_order_items`).
+  final double? itemSubtotal;
+  /// Distance-based delivery fee at checkout.
+  final double? deliveryFee;
+  /// What the rider actually paid at the counter (receipt photo).
   final double? actualFoodCost;
   final String? receiptPhotoUrl;
+  final String? _deliveryProofUrl;
 
   const FoodDeliveryModel({
     required super.id,
@@ -248,18 +292,21 @@ class FoodDeliveryModel extends BookingBase {
     required this.pickupAddress,
     required this.deliveryAddress,
     this.instructions = '',
-    required this.vehicleId,
-    this.distanceKm,
+    super.vehicleId,
+    super.distanceKm,
     this.restaurantId,
-    this.items,
-    this.totalItemsPrice,
+    this.itemSubtotal,
+    this.deliveryFee,
     this.actualFoodCost,
     this.receiptPhotoUrl,
+    String? deliveryProofUrl,
     super.riderId,
     required super.status,
     super.estimatedFare,
     super.finalFare,
+    super.paymentMethod,
     super.paymentStatus,
+    super.paymongoReference,
     super.rating,
     super.review,
     super.cancelledReason,
@@ -267,9 +314,13 @@ class FoodDeliveryModel extends BookingBase {
     super.acceptedAt,
     super.tipAmount,
     super.cancellationFee,
-    super.scheduledFor,
     super.promoCode,
-  }) : super(kind: BookingKind.food);
+    super.discountAmount,
+  })  : _deliveryProofUrl = deliveryProofUrl,
+        super(kind: BookingKind.food);
+
+  @override
+  String? get deliveryProofUrl => _deliveryProofUrl;
 
   factory FoodDeliveryModel.fromJson(Map<String, dynamic> json) {
     return FoodDeliveryModel(
@@ -279,27 +330,30 @@ class FoodDeliveryModel extends BookingBase {
       pickupAddress: json['pickup_address'] as String? ?? '',
       deliveryAddress: json['delivery_address'] as String? ?? '',
       instructions: json['instructions'] as String? ?? '',
-      vehicleId: json['vehicle_id'] as String? ?? '',
-      distanceKm: (json['distance_km'] as num?)?.toDouble(),
+      vehicleId: json['vehicle_id'] as String?,
+      distanceKm: _num(json['distance_km']),
       restaurantId: json['restaurant_id'] as String?,
-      items: json['items'] as List<dynamic>?,
-      totalItemsPrice: (json['total_items_price'] as num?)?.toDouble(),
-      actualFoodCost: (json['actual_food_cost'] as num?)?.toDouble(),
+      itemSubtotal: _num(json['item_subtotal']),
+      deliveryFee: _num(json['delivery_fee']),
+      actualFoodCost: _num(json['actual_food_cost']),
       receiptPhotoUrl: json['receipt_photo_url'] as String?,
+      deliveryProofUrl: json['delivery_proof_url'] as String?,
       riderId: json['rider_id'] as String?,
       status: json['status'] as String? ?? 'pending',
-      estimatedFare: (json['estimated_fare'] as num?)?.toDouble(),
-      finalFare: (json['final_fare'] as num?)?.toDouble(),
+      estimatedFare: _num(json['estimated_fare']),
+      finalFare: _num(json['final_fare']),
+      paymentMethod: json['payment_method'] as String?,
       paymentStatus: json['payment_status'] as String?,
+      paymongoReference: json['paymongo_reference'] as String?,
       rating: json['rating'] as int?,
       review: json['review'] as String?,
       cancelledReason: json['cancelled_reason'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
       acceptedAt: _parseTimestamp(json['accepted_at']),
-      tipAmount: (json['tip_amount'] as num?)?.toDouble(),
-      cancellationFee: (json['cancellation_fee'] as num?)?.toDouble(),
-      scheduledFor: _parseTimestamp(json['scheduled_for']),
+      tipAmount: _num(json['tip_amount']),
+      cancellationFee: _num(json['cancellation_fee']),
       promoCode: json['promo_code'] as String?,
+      discountAmount: _num(json['discount_amount']),
     );
   }
 }
@@ -315,9 +369,9 @@ class ParcelDeliveryModel extends BookingBase {
   final double? parcelWeight;
   final String parcelDescription;
   final String instructions;
-  final String vehicleId;
   final bool isRoundTrip;
   final double codAmount;
+  final String? _deliveryProofUrl;
 
   const ParcelDeliveryModel({
     required super.id,
@@ -332,14 +386,18 @@ class ParcelDeliveryModel extends BookingBase {
     this.parcelWeight,
     this.parcelDescription = '',
     this.instructions = '',
-    required this.vehicleId,
+    super.vehicleId,
+    super.distanceKm,
     this.isRoundTrip = false,
     this.codAmount = 0.0,
+    String? deliveryProofUrl,
     super.riderId,
     required super.status,
     super.estimatedFare,
     super.finalFare,
+    super.paymentMethod,
     super.paymentStatus,
+    super.paymongoReference,
     super.rating,
     super.review,
     super.cancelledReason,
@@ -347,9 +405,13 @@ class ParcelDeliveryModel extends BookingBase {
     super.acceptedAt,
     super.tipAmount,
     super.cancellationFee,
-    super.scheduledFor,
     super.promoCode,
-  }) : super(kind: BookingKind.parcel);
+    super.discountAmount,
+  })  : _deliveryProofUrl = deliveryProofUrl,
+        super(kind: BookingKind.parcel);
+
+  @override
+  String? get deliveryProofUrl => _deliveryProofUrl;
 
   factory ParcelDeliveryModel.fromJson(Map<String, dynamic> json) {
     return ParcelDeliveryModel(
@@ -362,26 +424,88 @@ class ParcelDeliveryModel extends BookingBase {
       receiverPhone: json['receiver_phone'] as String? ?? '',
       receiverAddress: json['receiver_address'] as String? ?? '',
       parcelSize: json['parcel_size'] as String? ?? 'Small (fits a shoebox)',
-      parcelWeight: (json['parcel_weight'] as num?)?.toDouble(),
+      parcelWeight: _num(json['parcel_weight']),
       parcelDescription: json['parcel_description'] as String? ?? '',
       instructions: json['instructions'] as String? ?? '',
-      vehicleId: json['vehicle_id'] as String? ?? '',
+      vehicleId: json['vehicle_id'] as String?,
+      distanceKm: _num(json['distance_km']),
       isRoundTrip: json['is_round_trip'] as bool? ?? false,
-      codAmount: (json['cod_amount'] as num?)?.toDouble() ?? 0.0,
+      codAmount: _num(json['cod_amount']) ?? 0.0,
+      deliveryProofUrl: json['delivery_proof_url'] as String?,
       riderId: json['rider_id'] as String?,
       status: json['status'] as String? ?? 'pending',
-      estimatedFare: (json['estimated_fare'] as num?)?.toDouble(),
-      finalFare: (json['final_fare'] as num?)?.toDouble(),
+      estimatedFare: _num(json['estimated_fare']),
+      finalFare: _num(json['final_fare']),
+      paymentMethod: json['payment_method'] as String?,
       paymentStatus: json['payment_status'] as String?,
+      paymongoReference: json['paymongo_reference'] as String?,
       rating: json['rating'] as int?,
       review: json['review'] as String?,
       cancelledReason: json['cancelled_reason'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
       acceptedAt: _parseTimestamp(json['accepted_at']),
-      tipAmount: (json['tip_amount'] as num?)?.toDouble(),
-      cancellationFee: (json['cancellation_fee'] as num?)?.toDouble(),
-      scheduledFor: _parseTimestamp(json['scheduled_for']),
+      tipAmount: _num(json['tip_amount']),
+      cancellationFee: _num(json['cancellation_fee']),
       promoCode: json['promo_code'] as String?,
+      discountAmount: _num(json['discount_amount']),
     );
   }
+}
+
+/// One stop on a multi-stop ride (`ride_stops`, sql/016).
+class RideStop {
+  final String id;
+  final int stopOrder;
+  final String address;
+  final double? lat;
+  final double? lng;
+  final DateTime? arrivedAt;
+
+  const RideStop({
+    required this.id,
+    required this.stopOrder,
+    required this.address,
+    this.lat,
+    this.lng,
+    this.arrivedAt,
+  });
+
+  bool get arrived => arrivedAt != null;
+
+  factory RideStop.fromJson(Map<String, dynamic> json) => RideStop(
+        id: json['id'] as String,
+        stopOrder: json['stop_order'] as int? ?? 0,
+        address: json['address'] as String? ?? '',
+        lat: _num(json['lat']),
+        lng: _num(json['lng']),
+        arrivedAt: _parseTimestamp(json['arrived_at']),
+      );
+}
+
+/// One line of a cart-based food order (`food_order_items`, sql/018).
+class FoodOrderItem {
+  final String id;
+  final String name;
+  final double unitPrice;
+  final int quantity;
+  final double subtotal;
+  final bool isOutOfStock;
+
+  const FoodOrderItem({
+    required this.id,
+    required this.name,
+    required this.unitPrice,
+    required this.quantity,
+    required this.subtotal,
+    this.isOutOfStock = false,
+  });
+
+  factory FoodOrderItem.fromJson(Map<String, dynamic> json) => FoodOrderItem(
+        id: json['id'] as String,
+        name: json['name'] as String? ?? '',
+        unitPrice: _num(json['unit_price']) ?? 0,
+        quantity: json['quantity'] as int? ?? 0,
+        subtotal: _num(json['subtotal']) ?? 0,
+        isOutOfStock: json['is_out_of_stock'] as bool? ?? false,
+      );
 }

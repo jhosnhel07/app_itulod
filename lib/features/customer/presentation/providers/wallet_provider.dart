@@ -27,11 +27,12 @@ class WalletNotifier extends StateNotifier<AsyncValue<WalletModel?>> {
     if (_userId == null) return;
     state = const AsyncValue.loading();
     try {
-      var wallet = await _repo.getWallet(_userId!);
-      if (wallet == null) {
-        wallet = await _repo.createWallet(_userId!);
-      }
-      state = AsyncValue.data(wallet);
+      // Wallet rows are only ever created server-side (wallet-topup,
+      // apply-referral-code); RLS has no client insert policy. No row yet
+      // just means a ₱0 balance — same as the web dashboard.
+      final wallet = await _repo.getWallet(_userId);
+      state = AsyncValue.data(wallet ??
+          WalletModel(userId: _userId, balance: 0, updatedAt: DateTime.now()));
     } catch (e, s) {
       state = AsyncValue.error(e, s);
     }
@@ -45,7 +46,12 @@ class WalletNotifier extends StateNotifier<AsyncValue<WalletModel?>> {
         body: {'amount': amount},
       );
 
-      final data = response.data as Map<String, dynamic>;
+      final data = response.data;
+      if (response.status != 200 || data is! Map) {
+        final error = data is Map ? data['error'] : 'Unknown error';
+        throw Exception(error ?? 'Could not start GCash checkout');
+      }
+
       if (data.containsKey('checkout_url')) {
         return data['checkout_url'] as String;
       }

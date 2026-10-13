@@ -11,7 +11,7 @@ class WalletModel {
 
   factory WalletModel.fromJson(Map<String, dynamic> json) {
     return WalletModel(
-      userId: json['user_id'] as String,
+      userId: json['customer_id'] as String,
       balance: (json['balance'] as num).toDouble(),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
@@ -38,7 +38,7 @@ class WalletTransactionModel {
   factory WalletTransactionModel.fromJson(Map<String, dynamic> json) {
     return WalletTransactionModel(
       id: json['id'] as String,
-      userId: json['user_id'] as String,
+      userId: json['customer_id'] as String,
       amount: (json['amount'] as num).toDouble(),
       type: json['type'] as String,
       referenceId: json['reference_id'] as String?,

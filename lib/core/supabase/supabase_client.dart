@@ -6,6 +6,9 @@ class SupabaseConfig {
 
   static bool _initialized = false;
 
+  /// True once [initialize] has completed.
+  static bool get isInitialized => _initialized;
+
   static SupabaseClient get client => Supabase.instance.client;
 
   /// True once [initialize] has completed and there is a stored session.

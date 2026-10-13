@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
+import '../../../../core/utils/formatters.dart';
 import '../../../../shared/models/booking_models.dart';
 import '../../data/customer_repository.dart';
 import 'customer_home_tab.dart' show customerHomeSummaryProvider;
@@ -17,14 +18,21 @@ const List<String> _cancellationReasons = [
 ];
 
 /// Shows a dialog for the user to pick a cancellation reason, and if confirmed, cancels the booking.
+///
+/// Cancelling after a rider accepted records platform_config's cancellation
+/// fee (the DB trigger sets it — never the client); the dialog warns with the
+/// real configured amount, like the web's cancelBooking().
 Future<void> showCancellationDialog(
   BuildContext context,
   WidgetRef ref,
   BookingBase booking,
 ) async {
-  final hasRider = booking.status == 'accepted' || booking.status == 'ongoing';
-  String? selectedReason;
+  final repo = ref.read(customerRepositoryProvider);
+  final riderAccepted = booking.status == 'accepted';
+  final fee = riderAccepted ? await repo.fetchCancellationFee() : null;
+  if (!context.mounted) return;
 
+  String? selectedReason;
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (ctx) => StatefulBuilder(
@@ -36,34 +44,34 @@ Future<void> showCancellationDialog(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (hasRider)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12.0),
-                    child: Text(
-                      'A rider is already on their way. Cancelling now will incur a ₱50.00 cancellation fee.',
-                      style: AppTypography.captionDark.copyWith(color: AppColors.danger),
-                    ),
-                  )
-                else
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12.0),
-                    child: Text(
-                      'Please let us know why you are cancelling.',
-                      style: AppTypography.captionDark,
-                    ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: Text(
+                    !riderAccepted
+                        ? 'Please let us know why you are cancelling.'
+                        : (fee != null && fee > 0)
+                            ? 'A rider has already accepted — cancelling now may incur a ${Formatters.currency(fee)} cancellation fee.'
+                            : 'A rider has already accepted this booking.',
+                    style: riderAccepted
+                        ? AppTypography.captionDark.copyWith(color: AppColors.danger)
+                        : AppTypography.captionDark,
                   ),
-                ..._cancellationReasons.map((reason) => RadioListTile<String>(
-                      title: Text(reason, style: AppTypography.bodyMedium),
-                      value: reason,
-                      groupValue: selectedReason,
-                      activeColor: AppColors.primary,
-                      contentPadding: EdgeInsets.zero,
-                      onChanged: (val) {
-                        setDialogState(() {
-                          selectedReason = val;
-                        });
-                      },
-                    )),
+                ),
+                RadioGroup<String>(
+                  groupValue: selectedReason,
+                  onChanged: (val) => setDialogState(() => selectedReason = val),
+                  child: Column(
+                    children: [
+                      for (final reason in _cancellationReasons)
+                        RadioListTile<String>(
+                          title: Text(reason, style: AppTypography.bodyMedium),
+                          value: reason,
+                          activeColor: AppColors.primary,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -88,7 +96,7 @@ Future<void> showCancellationDialog(
   if (confirmed != true || selectedReason == null) return;
 
   try {
-    await ref.read(customerRepositoryProvider).cancelBooking(booking, reason: selectedReason!);
+    await repo.cancelBooking(booking, reason: selectedReason!);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Booking cancelled.')),
@@ -97,8 +105,8 @@ Future<void> showCancellationDialog(
   } catch (e) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Could not cancel — this booking may have already changed status.'),
+        const SnackBar(
+          content: Text('Could not cancel — this booking may have already changed status.'),
           backgroundColor: AppColors.danger,
         ),
       );

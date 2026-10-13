@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../providers/wallet_provider.dart';
+import 'gcash_checkout_screen.dart';
 
 class WalletScreen extends ConsumerWidget {
   const WalletScreen({super.key});
@@ -167,13 +167,27 @@ class WalletScreen extends ConsumerWidget {
                           setState(() => isLoading = true);
                           try {
                             final url = await ref.read(walletProvider.notifier).topUpWallet(amount);
-                            if (url != null) {
-                              final uri = Uri.parse(url);
-                              if (await canLaunchUrl(uri)) {
-                                await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                if (context.mounted) Navigator.pop(context);
-                              } else {
-                                throw Exception('Could not open GCash payment page');
+                            if (url != null && context.mounted) {
+                              final success = await Navigator.of(context).push<bool>(
+                                MaterialPageRoute(
+                                  builder: (_) => GcashCheckoutScreen(checkoutUrl: url),
+                                ),
+                              );
+                              
+                              if (context.mounted) {
+                                Navigator.pop(context); // Close the top-up dialog
+                                if (success == true) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Top-up successful!')),
+                                  );
+                                  // Refresh wallet balance
+                                  ref.invalidate(walletProvider);
+                                  ref.invalidate(walletTransactionsProvider);
+                                } else if (success == false) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Top-up was cancelled or failed.')),
+                                  );
+                                }
                               }
                             }
                           } catch (e) {

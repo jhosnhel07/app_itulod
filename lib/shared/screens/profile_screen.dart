@@ -13,6 +13,8 @@ import '../widgets/avatar_widget.dart';
 import '../../core/supabase/supabase_client.dart';
 import '../../features/customer/data/customer_repository.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
+import '../../shared/models/profile_model.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Shared profile tab used by the customer, rider, and admin dashboards —
 /// fixing or improving this screen applies to every role at once.
@@ -141,6 +143,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         );
       }
     }
+    if (mounted) setState(() => _saving = false);
+  }
+
   Future<void> _changePassword() async {
     final oldPassword = _oldPasswordController.text;
     final newPassword = _newPasswordController.text;
@@ -148,21 +153,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     if (oldPassword.isEmpty || newPassword.isEmpty || confirmPassword.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all password fields'), backgroundColor: AppColors.danger),
+        const SnackBar(
+            content: Text('Please fill all password fields'),
+            backgroundColor: AppColors.danger),
       );
       return;
     }
-    
+
     if (newPassword != confirmPassword) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('New passwords do not match'), backgroundColor: AppColors.danger),
+        const SnackBar(
+            content: Text('New passwords do not match'),
+            backgroundColor: AppColors.danger),
       );
       return;
     }
-    
+
     if (newPassword.length < 8) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password must be at least 8 characters'), backgroundColor: AppColors.danger),
+        const SnackBar(
+            content: Text('Password must be at least 8 characters'),
+            backgroundColor: AppColors.danger),
       );
       return;
     }
@@ -175,20 +186,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       await SupabaseConfig.client.auth.updateUser(
         UserAttributes(password: newPassword),
       );
-      
+
       if (mounted) {
         _oldPasswordController.clear();
         _newPasswordController.clear();
         _confirmPasswordController.clear();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Password updated successfully!'), backgroundColor: AppColors.success),
+          const SnackBar(
+              content: Text('Password updated successfully!'),
+              backgroundColor: AppColors.success),
         );
       }
     } catch (e, s) {
       AppLog.warn('ProfileScreen: change password failed', e, s);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update password: $e'), backgroundColor: AppColors.danger),
+          SnackBar(
+              content: Text('Failed to update password: $e'),
+              backgroundColor: AppColors.danger),
         );
       }
     }
@@ -219,8 +234,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   value: category,
                   decoration: const InputDecoration(labelText: 'Category'),
                   items: const [
-                    DropdownMenuItem(value: 'account', child: Text('Account Issue')),
-                    DropdownMenuItem(value: 'payments', child: Text('Payments & Refunds')),
+                    DropdownMenuItem(
+                        value: 'account', child: Text('Account Issue')),
+                    DropdownMenuItem(
+                        value: 'payments', child: Text('Payments & Refunds')),
                     DropdownMenuItem(value: 'bug', child: Text('App Bug')),
                     DropdownMenuItem(value: 'other', child: Text('Other')),
                   ],
@@ -251,7 +268,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               text: 'Submit',
               type: AppButtonType.primary,
               onPressed: () async {
-                if (subjectCtrl.text.isEmpty || messageCtrl.text.isEmpty) return;
+                if (subjectCtrl.text.isEmpty || messageCtrl.text.isEmpty)
+                  return;
                 try {
                   await SupabaseConfig.client.from('support_requests').insert({
                     'customer_id': profile.id,
@@ -411,8 +429,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 const SizedBox(height: 2),
                 Text(
                   profile?.email ?? '',
-                  style:
-                      AppTypography.caption.copyWith(color: Colors.white70),
+                  style: AppTypography.caption.copyWith(color: Colors.white70),
                 ),
               ],
             ),
@@ -510,14 +527,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     label: 'New password',
                     controller: _newPasswordController,
                     obscureText: true,
-                    hintText: 'At least 8 characters',
+                    hint: 'At least 8 characters',
                   ),
                   const SizedBox(height: 14),
                   AppTextField(
                     label: 'Confirm new password',
                     controller: _confirmPasswordController,
                     obscureText: true,
-                    hintText: 'Re-enter new password',
+                    hint: 'Re-enter new password',
                   ),
                   const SizedBox(height: 14),
                   AppButton(
@@ -557,8 +574,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   title: const Text('Sign out?'),
                   content: const Text('You will need to log in again.'),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                    TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Sign out')),
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Cancel')),
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('Sign out')),
                   ],
                 ),
               );
@@ -667,8 +688,8 @@ class _SourceTile extends StatelessWidget {
         borderRadius: AppDecorations.radiusSm,
         child: Container(
           padding: const EdgeInsets.all(12),
-          decoration: AppDecorations.flatCard(
-              borderRadius: AppDecorations.radiusSm),
+          decoration:
+              AppDecorations.flatCard(borderRadius: AppDecorations.radiusSm),
           child: Row(
             children: [
               Container(
@@ -681,7 +702,8 @@ class _SourceTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: AppTypography.bodyBold.copyWith(fontSize: 14.5)),
+                    Text(title,
+                        style: AppTypography.bodyBold.copyWith(fontSize: 14.5)),
                     Text(subtitle, style: AppTypography.caption),
                   ],
                 ),

@@ -15,7 +15,7 @@ final riderRequestsProvider =
   final repo = ref.watch(riderRepositoryProvider);
   final profile = ref.watch(authNotifierProvider).profile;
   if (profile == null) return [];
-  return repo.fetchOpenRequests(profile.floatAmount);
+  return repo.fetchOpenRequests();
 });
 
 final riderActiveBookingsProvider =
@@ -45,6 +45,7 @@ class RiderRequestsTab extends ConsumerWidget {
     final requestsAsync = ref.watch(riderRequestsProvider);
     final application = ref.watch(authNotifierProvider).riderApplication;
     final approved = application?.status == ApplicationStatus.approved;
+    final float = ref.watch(authNotifierProvider).profile?.floatAmount ?? 0;
 
     return RefreshIndicator(
       onRefresh: () async => ref.invalidate(riderRequestsProvider),
@@ -106,7 +107,10 @@ class RiderRequestsTab extends ConsumerWidget {
                           ),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: Text('${b.kind.label} • ${Formatters.dateOnly(b.createdAt)}',
+                            child: Text(
+                                b is TransportBookingModel && b.scheduledFor != null
+                                    ? 'Scheduled • ${Formatters.date(b.scheduledFor!)}'
+                                    : '${b.kind.label} • ${Formatters.dateOnly(b.createdAt)}',
                                 style: AppTypography.captionDark,
                                 overflow: TextOverflow.ellipsis),
                           ),
@@ -129,6 +133,24 @@ class RiderRequestsTab extends ConsumerWidget {
                               'Expires ${Formatters.timeOnly(b.expiresAt)}',
                               style: AppTypography.caption.copyWith(
                                   color: AppColors.warning, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (b is FoodDeliveryModel &&
+                          (b.itemSubtotal ?? 0) > float) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(Icons.payments_outlined,
+                                size: 12, color: AppColors.danger),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                'Order costs ${Formatters.currency(b.itemSubtotal)} — more than your ${Formatters.currency(float)} float.',
+                                style: AppTypography.caption.copyWith(
+                                    color: AppColors.danger, fontSize: 11),
+                              ),
                             ),
                           ],
                         ),
@@ -190,9 +212,13 @@ class RiderRequestsTab extends ConsumerWidget {
         SnackBar(content: Text('${b.kind.label} booking accepted!'), backgroundColor: AppColors.success),
       );
     } catch (e) {
+      ref.invalidate(riderRequestsProvider);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not accept: $e'), backgroundColor: AppColors.danger),
+          SnackBar(
+            content: Text('Could not accept: ${e.toString().replaceFirst('Exception: ', '')}'),
+            backgroundColor: AppColors.danger,
+          ),
         );
       }
     }

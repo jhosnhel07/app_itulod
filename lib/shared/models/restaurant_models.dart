@@ -2,26 +2,34 @@ class RestaurantModel {
   final String id;
   final String name;
   final String address;
+  final String? cuisineType;
+  final double? lat;
+  final double? lng;
   final String? imageUrl;
-  final double rating;
   final DateTime createdAt;
 
   RestaurantModel({
     required this.id,
     required this.name,
     required this.address,
+    this.cuisineType,
+    this.lat,
+    this.lng,
     this.imageUrl,
-    this.rating = 0.0,
     required this.createdAt,
   });
+
+  bool get hasLocation => lat != null && lng != null;
 
   factory RestaurantModel.fromJson(Map<String, dynamic> json) {
     return RestaurantModel(
       id: json['id'] as String,
       name: json['name'] as String,
       address: json['address'] as String,
+      cuisineType: json['cuisine_type'] as String?,
+      lat: (json['lat'] as num?)?.toDouble(),
+      lng: (json['lng'] as num?)?.toDouble(),
       imageUrl: json['image_url'] as String?,
-      rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
@@ -30,8 +38,10 @@ class RestaurantModel {
         'id': id,
         'name': name,
         'address': address,
+        'cuisine_type': cuisineType,
+        'lat': lat,
+        'lng': lng,
         'image_url': imageUrl,
-        'rating': rating,
         'created_at': createdAt.toIso8601String(),
       };
 }

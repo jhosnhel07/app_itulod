@@ -1,17 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../shared/models/booking_models.dart';
+import '../../../../shared/providers/booking_extras_providers.dart';
 import '../../../../shared/widgets/app_button.dart';
+import '../../../../shared/widgets/booking_route_map.dart';
 import '../../../../shared/widgets/status_badge.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../chat/presentation/screens/chat_screen.dart';
 import '../../data/rider_repository.dart';
+import 'rider_earnings_tab.dart' show riderEarningsProvider;
+import 'rider_home_tab.dart' show riderHomeSnapshotProvider;
 import 'rider_requests_tab.dart' show riderActiveBookingsProvider, riderRequestsProvider;
-import '../../../chat/presentation/screens/chat_screen.dart' as import_chat;
 
+/// The rider's active job(s) — the web's "Accepted bookings" tab
+/// (rider.js renderAcceptedCard + the navigation map).
 class RiderTripTab extends ConsumerWidget {
   const RiderTripTab({super.key});
 
@@ -66,18 +73,235 @@ class RiderTripTab extends ConsumerWidget {
   }
 }
 
-class _ActiveBookingCard extends ConsumerWidget {
+class _ActiveBookingCard extends ConsumerStatefulWidget {
   final BookingBase booking;
 
   const _ActiveBookingCard({required this.booking});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isOngoing = booking.status == 'ongoing';
-    final paymentBlocked = booking.kind == BookingKind.transport &&
-        booking.paymentMethod != null &&
-        booking.paymentMethod != 'cash' &&
-        booking.paymentStatus != 'paid';
+  ConsumerState<_ActiveBookingCard> createState() => _ActiveBookingCardState();
+}
+
+class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
+  late final TextEditingController _fareController;
+  bool _busy = false;
+  bool _showMap = true;
+
+  BookingBase get booking => widget.booking;
+  bool get _isOngoing => booking.status == 'ongoing';
+
+  /// Food/parcel: the rider confirms the real fare at pickup before the job
+  /// can be completed (web: needsFinalFare).
+  bool get _needsFinalFare => booking.kind != BookingKind.transport && booking.finalFare == null;
+
+  bool get _paymentBlocked =>
+      booking.kind == BookingKind.transport &&
+      booking.paymentMethod != null &&
+      booking.paymentMethod != 'cash' &&
+      booking.paymentStatus != 'paid';
+
+  @override
+  void initState() {
+    super.initState();
+    final suggested = booking.estimatedFare;
+    _fareController = TextEditingController(
+        text: suggested == null ? '' : suggested.toStringAsFixed(2));
+  }
+
+  @override
+  void dispose() {
+    _fareController.dispose();
+    super.dispose();
+  }
+
+  void _refreshAll() {
+    ref.invalidate(riderActiveBookingsProvider);
+    ref.invalidate(riderRequestsProvider);
+    ref.invalidate(riderHomeSnapshotProvider);
+    ref.invalidate(riderEarningsProvider);
+  }
+
+  void _toast(String message, {Color? color}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: color),
+    );
+  }
+
+  static String _clean(Object e) => e.toString().replaceFirst('Exception: ', '');
+
+  Future<bool> _confirm(String title, String body, String action, {bool danger = false}) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Never mind')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: danger ? TextButton.styleFrom(foregroundColor: AppColors.danger) : null,
+            child: Text(action),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  Future<void> _run(Future<void> Function() action, {String? success}) async {
+    setState(() => _busy = true);
+    try {
+      await action();
+      _refreshAll();
+      if (success != null) _toast(success, color: AppColors.success);
+    } catch (e) {
+      _toast(_clean(e), color: AppColors.danger);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  // ── Actions ───────────────────────────────────────────────────────────
+
+  Future<void> _start() async {
+    final riderId = ref.read(authNotifierProvider).profile!.id;
+    await _run(() => ref.read(riderRepositoryProvider).updateStatus(booking, 'ongoing', riderId: riderId),
+        success: 'Trip started.');
+  }
+
+  Future<void> _release() async {
+    if (!await _confirm('Release this job?',
+        "Release it back to other riders? Only do this if you genuinely can't complete it.", 'Release')) {
+      return;
+    }
+    await _run(() => ref.read(riderRepositoryProvider).releaseBooking(booking),
+        success: 'Job released — another rider can pick it up.');
+  }
+
+  Future<void> _noShow() async {
+    if (!await _confirm('Mark as no-show?',
+        "Use this only if you arrived and the customer/order wasn't there.", 'No-show',
+        danger: true)) {
+      return;
+    }
+    final riderId = ref.read(authNotifierProvider).profile!.id;
+    await _run(() => ref.read(riderRepositoryProvider).updateStatus(booking, 'no_show', riderId: riderId),
+        success: 'Marked as no-show.');
+  }
+
+  Future<XFile?> _pickPhoto(String title) async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(title: Text(title, style: AppTypography.bodyBold)),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take a photo'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return null;
+    return ImagePicker().pickImage(source: source, maxWidth: 1600, imageQuality: 80);
+  }
+
+  /// Food: optional receipt photo, then finalize-fare. Parcel: finalize-fare.
+  Future<void> _setFare() async {
+    final amount = double.tryParse(_fareController.text.trim());
+    if (amount == null || amount <= 0) {
+      _toast('Enter the final fare first.', color: AppColors.danger);
+      return;
+    }
+    final riderId = ref.read(authNotifierProvider).profile!.id;
+    final repo = ref.read(riderRepositoryProvider);
+    final b = booking;
+    if (b is FoodDeliveryModel) {
+      final photo = await _pickPhoto('Photo of the receipt (optional)');
+      final bytes = await photo?.readAsBytes();
+      await _run(
+        () => repo.confirmFoodFare(
+          riderId: riderId,
+          booking: b,
+          amount: amount,
+          receiptBytes: bytes,
+          receiptName: photo?.name,
+        ),
+        success: 'Fare confirmed. The customer has been notified.',
+      );
+    } else {
+      await _run(() => repo.finalizeFare(b, amount),
+          success: 'Fare confirmed. The customer has been notified.');
+    }
+  }
+
+  Future<void> _complete() async {
+    final riderId = ref.read(authNotifierProvider).profile!.id;
+    final repo = ref.read(riderRepositoryProvider);
+    if (booking.kind == BookingKind.transport) {
+      await _run(() => repo.updateStatus(booking, 'completed', riderId: riderId),
+          success: 'Trip completed! Earnings updated.');
+      return;
+    }
+
+    // Food/parcel drop-off gets a proof-of-delivery photo (web: completeWithProof).
+    final photo = await _pickPhoto('Proof of delivery');
+    if (photo == null) return;
+    setState(() => _busy = true);
+    var uploaded = true;
+    try {
+      _toast('Uploading photo…');
+      await repo.uploadDeliveryProof(
+        riderId: riderId,
+        booking: booking,
+        bytes: await photo.readAsBytes(),
+        fileName: photo.name,
+      );
+    } catch (_) {
+      uploaded = false;
+    }
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (!uploaded &&
+        !await _confirm('Upload failed', "Couldn't upload the photo. Mark this complete without one?",
+            'Complete anyway')) {
+      return;
+    }
+    await _run(() => repo.updateStatus(booking, 'completed', riderId: riderId),
+        success: 'Delivery completed! Earnings updated.');
+  }
+
+  Future<void> _openNavigation() async {
+    final destination = _isOngoing ? booking.dropoffLine : booking.pickupLine;
+    final uri = Uri.https('www.google.com', '/maps/dir/', {
+      'api': '1',
+      'destination': destination,
+      'travelmode': 'driving',
+    });
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      _toast('Could not open maps.', color: AppColors.danger);
+    }
+  }
+
+  // ── UI ────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final stopsAsync = booking.kind == BookingKind.transport
+        ? ref.watch(rideStopsProvider(booking.id))
+        : const AsyncValue<List<RideStop>>.data([]);
+    final stops = stopsAsync.valueOrNull ?? const <RideStop>[];
+    final canComplete = _isOngoing && !_needsFinalFare;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -93,187 +317,126 @@ class _ActiveBookingCard extends ConsumerWidget {
                 StatusBadge(status: booking.status),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(booking.routeLine,
-                style: AppTypography.bodyMedium.copyWith(fontSize: 14)),
+            const SizedBox(height: 10),
+            Text(booking.routeLine, style: AppTypography.bodyMedium.copyWith(fontSize: 14)),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Text('Fare: ${booking.displayFare}', style: AppTypography.captionDark),
+                if (booking.paymentMethod != null && booking.paymentMethod != 'cash') ...[
+                  const SizedBox(width: 8),
+                  StatusBadge(
+                    status: '${booking.paymentMethod == 'wallet' ? 'Wallet' : 'GCash'} · ${booking.paymentStatus ?? 'pending'}',
+                    fontSize: 10,
+                  ),
+                ],
+              ],
+            ),
             if (booking.expiresAt != null) ...[
               const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.warning50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.hourglass_top_rounded,
-                        size: 13, color: AppColors.warning),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Start the trip before ${Formatters.timeOnly(booking.expiresAt)} — '
-                      'a 15-minute grace period after acceptance.',
-                      style: AppTypography.caption.copyWith(fontSize: 11),
-                    ),
-                  ],
-                ),
+              _note(
+                Icons.hourglass_top_rounded,
+                'Start the trip before ${Formatters.timeOnly(booking.expiresAt)} — a 15-minute grace period after acceptance.',
               ),
             ],
+            if (_paymentBlocked) ...[
+              const SizedBox(height: 8),
+              _note(Icons.info_outline_rounded,
+                  'Waiting for online payment confirmation before starting the trip.'),
+            ],
             const SizedBox(height: 12),
-            // Trip progress steps
             Row(
               children: [
                 _stepIcon(true, Icons.flag_circle_outlined, 'Accepted'),
-                _stepConnector(isOngoing || false),
-                _stepIcon(isOngoing, Icons.directions_rounded, 'On trip'),
+                _stepConnector(_isOngoing),
+                _stepIcon(_isOngoing, Icons.directions_rounded, 'On trip'),
                 _stepConnector(false),
                 _stepIcon(false, Icons.emoji_events_outlined, 'Complete'),
               ],
             ),
-            if (paymentBlocked) ...[
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.warning.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.info_outline_rounded,
-                        color: AppColors.warning, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Waiting for online payment confirmation before starting the trip.',
-                        style: AppTypography.captionDark.copyWith(fontSize: 12),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            const SizedBox(height: 14),
-            if (isOngoing && booking.kind == BookingKind.food) ...[
-              AppButton(
-                text: 'Adjust Final Bill (Receipt)',
-                icon: Icons.receipt_long_rounded,
-                onPressed: () => _adjustFoodBill(context, ref),
-              ),
-              const SizedBox(height: 10),
-            ],
+            const SizedBox(height: 12),
             Row(
               children: [
-                if (booking.kind == BookingKind.food || booking.kind == BookingKind.parcel) ...[
+                Text('Navigation', style: AppTypography.bodyBold),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () => setState(() => _showMap = !_showMap),
+                  icon: Icon(_showMap ? Icons.expand_less : Icons.expand_more, size: 18),
+                  label: Text(_showMap ? 'Hide map' : 'Show map'),
+                ),
+              ],
+            ),
+            if (_showMap && !stopsAsync.isLoading)
+              BookingRouteMap(booking: booking, stops: stops, height: 200),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _openNavigation,
+              icon: const Icon(Icons.navigation_rounded, size: 18),
+              label: Text(_isOngoing ? 'Navigate to drop-off' : 'Navigate to pickup'),
+            ),
+            if (stops.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _StopsList(booking: booking, stops: stops),
+            ],
+            if (booking.kind != BookingKind.transport) ...[
+              const SizedBox(height: 12),
+              _OrderDetails(booking: booking, canMarkOutOfStock: _isOngoing),
+            ],
+            if (_needsFinalFare) ...[
+              const SizedBox(height: 14),
+              Text(
+                booking.kind == BookingKind.food
+                    ? 'Confirm the fare at pickup (items + delivery). You can attach a photo of the receipt.'
+                    : 'Confirm the fare once you\'ve seen the parcel.',
+                style: AppTypography.caption,
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
                   Expanded(
-                    child: AppButton(
-                      text: 'View Order',
-                      icon: Icons.list_alt_rounded,
-                      onPressed: () => _viewOrderDetails(context, ref, isOngoing),
+                    child: TextField(
+                      controller: _fareController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        prefixText: '₱ ',
+                        hintText: 'Final fare',
+                        isDense: true,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
-                ],
-                Expanded(
-                  child: AppButton(
-                    text: 'Chat',
-                    icon: Icons.chat_bubble_outline_rounded,
-                    onPressed: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => import_chat.ChatScreen(bookingId: booking.id)));
-                    },
+                  OutlinedButton(
+                    onPressed: _busy ? null : _setFare,
+                    child: const Text('Set fare'),
                   ),
-                ),
-              ],
+                ],
+              ),
+            ],
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.push(context, ChatScreen.route(booking)),
+              icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
+              label: const Text('Chat with customer'),
             ),
             const SizedBox(height: 10),
             Row(
               children: [
-                if (!isOngoing)
+                if (!_isOngoing) ...[
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () async {
-                        final confirmed = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('Release Request?'),
-                            content: const Text('This will release the booking back to other riders.'),
-                            actions: [
-                              TextButton(
-                                  onPressed: () => Navigator.pop(ctx, false),
-                                  child: const Text('Never mind')),
-                              TextButton(
-                                  onPressed: () => Navigator.pop(ctx, true),
-                                  style: TextButton.styleFrom(foregroundColor: AppColors.danger),
-                                  child: const Text('Release')),
-                            ],
-                          ),
-                        );
-                        if (confirmed != true) return;
-
-                        try {
-                          await ref.read(riderRepositoryProvider).cancelAndRematchBooking(booking);
-                          ref.invalidate(riderActiveBookingsProvider);
-                          ref.invalidate(riderRequestsProvider);
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Booking released.')),
-                            );
-                          }
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Release failed: $e'), backgroundColor: AppColors.danger),
-                            );
-                          }
-                        }
-                      },
+                      onPressed: _busy ? null : _release,
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.text,
-                        side: const BorderSide(color: AppColors.border),
+                        foregroundColor: AppColors.neutral700,
+                        side: const BorderSide(color: AppColors.cardBorder),
                       ),
-                      icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                      icon: const Icon(Icons.undo_rounded, size: 18),
                       label: const Text('Release'),
                     ),
                   ),
-                if (!isOngoing) const SizedBox(width: 8),
-                if (!isOngoing)
+                  const SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () async {
-                        final confirmed = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('Mark as No-show?'),
-                            content: const Text('Use this only if you arrived and the customer/order wasn\'t there.'),
-                            actions: [
-                              TextButton(
-                                  onPressed: () => Navigator.pop(ctx, false),
-                                  child: const Text('Cancel')),
-                              TextButton(
-                                  onPressed: () => Navigator.pop(ctx, true),
-                                  style: TextButton.styleFrom(foregroundColor: AppColors.danger),
-                                  child: const Text('No-show')),
-                            ],
-                          ),
-                        );
-                        if (confirmed != true) return;
-
-                        try {
-                          await ref.read(riderRepositoryProvider).updateBookingStatus(booking, 'no_show');
-                          ref.invalidate(riderActiveBookingsProvider);
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Marked as no-show.')),
-                            );
-                          }
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('No-show failed: $e'), backgroundColor: AppColors.danger),
-                            );
-                          }
-                        }
-                      },
+                      onPressed: _busy ? null : _noShow,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.danger,
                         side: const BorderSide(color: AppColors.danger),
@@ -282,144 +445,55 @@ class _ActiveBookingCard extends ConsumerWidget {
                       label: const Text('No-show'),
                     ),
                   ),
-                if (!isOngoing) const SizedBox(width: 10),
+                  const SizedBox(width: 8),
+                ],
                 Expanded(
                   child: AppButton(
-                    text: isOngoing ? 'Mark Complete' : 'Start Trip',
-                    icon: isOngoing ? Icons.task_alt_rounded : Icons.play_arrow_rounded,
-                    onPressed: paymentBlocked
+                    text: _isOngoing ? 'Mark Complete' : 'Start Trip',
+                    icon: _isOngoing ? Icons.task_alt_rounded : Icons.play_arrow_rounded,
+                    isLoading: _busy,
+                    onPressed: _paymentBlocked || (_isOngoing && !canComplete)
                         ? null
-                        : () async {
-                            final profile = ref.read(authNotifierProvider).profile!;
-                            final repo = ref.read(riderRepositoryProvider);
-                            try {
-                              String? photoUrl;
-                              if (isOngoing && (booking.kind == BookingKind.food || booking.kind == BookingKind.parcel)) {
-                                final ImagePicker picker = ImagePicker();
-                                final XFile? image = await picker.pickImage(source: ImageSource.camera);
-                                if (image != null) {
-                                  // Show a loading snackbar
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Uploading proof of delivery...')),
-                                    );
-                                  }
-                                  photoUrl = await repo.uploadDropoffPhoto(booking.id, image.path);
-                                } else {
-                                  // cancelled picking image
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Proof of delivery is required to complete this trip.'), backgroundColor: AppColors.warning),
-                                    );
-                                  }
-                                  return;
-                                }
-                              }
-
-                              await repo.updateStatus(
-                                booking,
-                                isOngoing ? 'completed' : 'ongoing',
-                                riderId: profile.id,
-                                dropoffPhotoUrl: photoUrl,
-                              );
-                              ref.invalidate(riderActiveBookingsProvider);
-                              ref.invalidate(riderRequestsProvider);
-                              if (context.mounted && isOngoing) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Trip completed! Earnings updated.'),
-                                    backgroundColor: AppColors.success,
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text('Update failed: $e'),
-                                      backgroundColor: AppColors.danger),
-                                );
-                              }
-                            }
-                          },
+                        : (_isOngoing ? _complete : _start),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Center(
-              child: Text('Fare: ${Formatters.currency(booking.finalFare ?? booking.estimatedFare)}',
-                  style: AppTypography.captionDark),
-            ),
+            if (_isOngoing && !canComplete) ...[
+              const SizedBox(height: 6),
+              Center(
+                child: Text('Set the final fare before completing.',
+                    style: AppTypography.caption),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Future<void> _adjustFoodBill(BuildContext context, WidgetRef ref) async {
-    final foodBooking = booking as FoodDeliveryModel;
-    final controller = TextEditingController(text: foodBooking.totalItemsPrice?.toStringAsFixed(0) ?? '');
-    
-    final newAmount = await showDialog<double>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Adjust Food Bill'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Enter the actual amount on the physical receipt:'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(prefixText: '₱ ', hintText: 'e.g., 500'),
-              autofocus: true,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              final val = double.tryParse(controller.text.trim());
-              Navigator.pop(ctx, val);
-            },
-            child: const Text('Next'),
-          ),
+  Widget _note(IconData icon, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.warning50,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: AppColors.warning),
+          const SizedBox(width: 6),
+          Expanded(child: Text(text, style: AppTypography.caption.copyWith(fontSize: 11.5))),
         ],
       ),
     );
-
-    if (newAmount == null || !context.mounted) return;
-
-    final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.camera);
-    if (image == null) return;
-
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Uploading receipt...')));
-
-    try {
-      await ref.read(riderRepositoryProvider).adjustFoodBill(booking.id, newAmount, image.path);
-      ref.invalidate(riderActiveBookingsProvider);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bill adjusted successfully.'), backgroundColor: AppColors.success));
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: AppColors.danger));
-      }
-    }
   }
 
   Widget _stepIcon(bool active, IconData icon, String label) {
     return Expanded(
       child: Column(
         children: [
-          Icon(icon,
-              color: active ? AppColors.success : AppColors.neutral300, size: 26),
+          Icon(icon, color: active ? AppColors.success : AppColors.neutral300, size: 26),
           const SizedBox(height: 4),
           Text(label,
               style: AppTypography.caption.copyWith(
@@ -439,130 +513,170 @@ class _ActiveBookingCard extends ConsumerWidget {
       color: reached ? AppColors.success : AppColors.neutral300,
     );
   }
+}
 
-  void _viewOrderDetails(BuildContext context, WidgetRef ref, bool isOngoing) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (_, scrollController) {
-          if (booking.kind == BookingKind.food) {
-            final f = booking as FoodDeliveryModel;
-            return ListView(
-              controller: scrollController,
-              padding: const EdgeInsets.all(20),
-              children: [
-                Text('Order for ${f.restaurantName}', style: AppTypography.h3),
-                const SizedBox(height: 10),
-                if (f.instructions.isNotEmpty) ...[
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    color: AppColors.primary50,
-                    child: Text('Note: ${f.instructions}'),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                const Divider(),
-                ...?f.items?.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final map = entry.value as Map<String, dynamic>;
-                  final isOos = map['is_out_of_stock'] == true;
-                  
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      '${map['quantity']}x ${map['name']}',
-                      style: TextStyle(
-                        decoration: isOos ? TextDecoration.lineThrough : null,
-                        color: isOos ? Colors.grey : null,
-                      ),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '₱${map['price'] ?? 0.0}',
-                          style: TextStyle(
-                            decoration: isOos ? TextDecoration.lineThrough : null,
-                            color: isOos ? Colors.grey : null,
-                          ),
-                        ),
-                        if (!isOos && isOngoing)
-                          IconButton(
-                            icon: const Icon(Icons.remove_shopping_cart, size: 20, color: Colors.red),
-                            tooltip: 'Mark Out of Stock',
-                            onPressed: () async {
-                              final confirm = await showDialog<bool>(
-                                context: context,
-                                builder: (c) => AlertDialog(
-                                  title: const Text('Mark Out of Stock?'),
-                                  content: const Text('This will mark the item as out of stock.'),
-                                  actions: [
-                                    TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-                                    TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Confirm')),
-                                  ],
-                                ),
-                              );
-                              if (confirm == true) {
-                                try {
-                                  await ref.read(riderRepositoryProvider).markItemOutOfStock(f.id, index);
-                                  ref.invalidate(riderActiveBookingsProvider);
-                                  if (context.mounted) Navigator.pop(context); // close modal to refresh
-                                } catch (e) {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-                                  }
-                                }
-                              }
-                            },
-                          ),
-                      ],
-                    ),
-                  );
-                }),
-                const Divider(),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Est. Food Total', style: TextStyle(fontWeight: FontWeight.bold)),
-                  trailing: Text('₱${f.totalItemsPrice?.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+/// Multi-stop rides: stops in order, with "Mark arrived" on the next one.
+class _StopsList extends ConsumerWidget {
+  final BookingBase booking;
+  final List<RideStop> stops;
+
+  const _StopsList({required this.booking, required this.stops});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final next = stops.where((s) => !s.arrived).firstOrNull;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Stops', style: AppTypography.bodyBold),
+        const SizedBox(height: 4),
+        for (final s in stops)
+          Row(
+            children: [
+              Icon(s.arrived ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                  size: 16, color: s.arrived ? AppColors.success : AppColors.neutral400),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text('Stop ${s.stopOrder}: ${s.address}',
+                    style: AppTypography.caption.copyWith(fontSize: 12.5)),
+              ),
+              if (s.id == next?.id)
+                TextButton(
+                  onPressed: () async {
+                    try {
+                      await ref.read(riderRepositoryProvider).markStopArrived(s.id);
+                      ref.invalidate(rideStopsProvider(booking.id));
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text('Marked stop ${s.stopOrder} arrived.'),
+                          backgroundColor: AppColors.success,
+                        ));
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text('$e'),
+                          backgroundColor: AppColors.danger,
+                        ));
+                      }
+                    }
+                  },
+                  child: const Text('Mark arrived'),
                 ),
-              ],
-            );
-          } else if (booking.kind == BookingKind.parcel) {
-            final p = booking as ParcelDeliveryModel;
-            return ListView(
-              controller: scrollController,
-              padding: const EdgeInsets.all(20),
-              children: [
-                Text('Parcel Details', style: AppTypography.h3),
-                const SizedBox(height: 10),
-                ListTile(title: const Text('Size'), subtitle: Text(p.parcelSize)),
-                ListTile(title: const Text('Description'), subtitle: Text(p.parcelDescription)),
-                if (p.instructions.isNotEmpty)
-                  ListTile(title: const Text('Instructions'), subtitle: Text(p.instructions)),
-                if (p.isRoundTrip)
-                  ListTile(
-                    title: const Text('Round Trip'), 
-                    subtitle: const Text('Return to sender after dropoff'),
-                    leading: const Icon(Icons.loop_rounded, color: AppColors.primary),
-                  ),
-                if (p.codAmount > 0)
-                  ListTile(
-                    title: const Text('Collect COD'), 
-                    subtitle: Text('₱${p.codAmount.toStringAsFixed(2)}'),
-                    leading: const Icon(Icons.payments_rounded, color: AppColors.success),
-                  ),
-              ],
-            );
-          }
-          return const SizedBox.shrink();
-        },
-      ),
+            ],
+          ),
+      ],
     );
   }
 }
 
+/// Food: the order lines (with out-of-stock) and notes. Parcel: the parcel
+/// facts the rider needs at pickup.
+class _OrderDetails extends ConsumerWidget {
+  final BookingBase booking;
+  final bool canMarkOutOfStock;
+
+  const _OrderDetails({required this.booking, required this.canMarkOutOfStock});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final b = booking;
+    if (b is ParcelDeliveryModel) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Parcel', style: AppTypography.bodyBold),
+          const SizedBox(height: 4),
+          _line('Size', b.parcelSize),
+          if (b.parcelWeight != null) _line('Weight', '${b.parcelWeight!.toStringAsFixed(1)} kg'),
+          if (b.parcelDescription.isNotEmpty) _line('Contents', b.parcelDescription),
+          _line('Sender', '${b.senderName}${b.senderPhone.isEmpty ? '' : ' · ${b.senderPhone}'}'),
+          _line('Receiver', '${b.receiverName}${b.receiverPhone.isEmpty ? '' : ' · ${b.receiverPhone}'}'),
+          if (b.instructions.isNotEmpty) _line('Instructions', b.instructions),
+          if (b.isRoundTrip) _line('Round trip', 'Return to the sender after drop-off'),
+          if (b.codAmount > 0) _line('Collect COD', Formatters.currency(b.codAmount)),
+        ],
+      );
+    }
+    if (b is! FoodDeliveryModel) return const SizedBox.shrink();
+
+    final itemsAsync = ref.watch(foodOrderItemsProvider(b.id));
+    final items = itemsAsync.valueOrNull ?? const <FoodOrderItem>[];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Order from ${b.restaurantName}', style: AppTypography.bodyBold),
+        if (b.instructions.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          _line('Note', b.instructions),
+        ],
+        const SizedBox(height: 4),
+        for (final item in items)
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${item.quantity} × ${item.name}${item.isOutOfStock ? ' (out of stock)' : ''}',
+                  style: AppTypography.caption.copyWith(
+                    fontSize: 12.5,
+                    decoration: item.isOutOfStock ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+              ),
+              Text(Formatters.currency(item.subtotal),
+                  style: AppTypography.caption.copyWith(
+                    decoration: item.isOutOfStock ? TextDecoration.lineThrough : null,
+                  )),
+              if (canMarkOutOfStock && !item.isOutOfStock)
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Mark out of stock',
+                  icon: const Icon(Icons.remove_shopping_cart_outlined, size: 18, color: AppColors.danger),
+                  onPressed: () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (c) => AlertDialog(
+                        title: const Text('Mark out of stock?'),
+                        content: Text('${item.name} will be crossed off the order.'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+                          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Confirm')),
+                        ],
+                      ),
+                    );
+                    if (ok != true) return;
+                    try {
+                      await ref.read(riderRepositoryProvider).markItemOutOfStock(item.id);
+                      ref.invalidate(foodOrderItemsProvider(b.id));
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(e.toString().replaceFirst('Exception: ', '')),
+                          backgroundColor: AppColors.danger,
+                        ));
+                      }
+                    }
+                  },
+                ),
+            ],
+          ),
+        if (b.itemSubtotal != null) ...[
+          const Divider(height: 12),
+          _line('Item subtotal', Formatters.currency(b.itemSubtotal)),
+          if (b.deliveryFee != null) _line('Delivery fee', Formatters.currency(b.deliveryFee)),
+        ],
+      ],
+    );
+  }
+
+  Widget _line(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(width: 96, child: Text(label, style: AppTypography.caption)),
+            Expanded(child: Text(value, style: AppTypography.caption.copyWith(fontSize: 12.5))),
+          ],
+        ),
+      );
+}
