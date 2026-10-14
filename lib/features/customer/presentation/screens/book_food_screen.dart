@@ -1,3 +1,4 @@
+import 'dart:ui' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
@@ -309,15 +310,11 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
                 ],
               ),
               const SizedBox(height: 10),
-              SizedBox(
-                height: 36,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    _chip('all', 'All', Icons.storefront_rounded, inTown.length, category),
-                    for (final p in present) _chip(p.cat.id, p.cat.label, p.cat.icon, p.count, category),
-                  ],
-                ),
+              _ChipScroller(
+                children: [
+                  _chip('all', 'All', Icons.storefront_rounded, inTown.length, category),
+                  for (final p in present) _chip(p.cat.id, p.cat.label, p.cat.icon, p.count, category),
+                ],
               ),
             ],
           ),
@@ -609,6 +606,132 @@ class _CountPill extends StatelessWidget {
             fontSize: 10.5,
             color: active ? Colors.white : AppColors.neutral500,
           )),
+    );
+  }
+}
+
+/// Horizontally scrolling category row with a visible scrollbar, ‹ › arrow
+/// buttons that appear only when there's more to see, and drag-to-scroll
+/// for mouse and trackpad too (Flutter only drags with touch by default,
+/// which left desktop/web users unable to reach the hidden categories).
+class _ChipScroller extends StatefulWidget {
+  final List<Widget> children;
+
+  const _ChipScroller({required this.children});
+
+  @override
+  State<_ChipScroller> createState() => _ChipScrollerState();
+}
+
+class _ChipScrollerState extends State<_ChipScroller> {
+  final _controller = ScrollController();
+  bool _canLeft = false;
+  bool _canRight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_update);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _update());
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChipScroller oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _update());
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _update() {
+    if (!mounted || !_controller.hasClients) return;
+    final p = _controller.position;
+    final left = p.pixels > 2;
+    final right = p.pixels < p.maxScrollExtent - 2;
+    if (left != _canLeft || right != _canRight) {
+      setState(() {
+        _canLeft = left;
+        _canRight = right;
+      });
+    }
+  }
+
+  void _scrollBy(double delta) {
+    if (!_controller.hasClients) return;
+    final p = _controller.position;
+    _controller.animateTo(
+      (p.pixels + delta).clamp(0, p.maxScrollExtent),
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 44,
+      child: Stack(
+        children: [
+          ScrollConfiguration(
+            behavior: ScrollConfiguration.of(context).copyWith(
+              dragDevices: PointerDeviceKind.values.toSet(),
+            ),
+            child: Scrollbar(
+              controller: _controller,
+              thumbVisibility: true,
+              thickness: 3,
+              radius: const Radius.circular(3),
+              child: ListView(
+                controller: _controller,
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.only(bottom: 8),
+                children: widget.children,
+              ),
+            ),
+          ),
+          if (_canLeft) _arrow(left: true),
+          if (_canRight) _arrow(left: false),
+        ],
+      ),
+    );
+  }
+
+  Widget _arrow({required bool left}) {
+    return Positioned(
+      left: left ? 0 : null,
+      right: left ? null : 0,
+      top: 0,
+      bottom: 8,
+      child: Container(
+        width: 48,
+        alignment: left ? Alignment.centerLeft : Alignment.centerRight,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: left ? Alignment.centerLeft : Alignment.centerRight,
+            end: left ? Alignment.centerRight : Alignment.centerLeft,
+            colors: [AppColors.surface, AppColors.surface.withValues(alpha: 0)],
+            stops: const [0.45, 1],
+          ),
+        ),
+        child: Material(
+          color: AppColors.surface,
+          shape: const CircleBorder(side: BorderSide(color: AppColors.cardBorder)),
+          elevation: 1.5,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: () => _scrollBy(left ? -180 : 180),
+            child: Padding(
+              padding: const EdgeInsets.all(5),
+              child: Icon(left ? Icons.chevron_left_rounded : Icons.chevron_right_rounded,
+                  size: 18, color: AppColors.primary),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
