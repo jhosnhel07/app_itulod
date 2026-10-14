@@ -396,6 +396,19 @@ class CustomerRepository {
     return HaulingBookingModel.fromJson(row);
   }
 
+  /// Hauling drivers on iTULOD and how many are online now (sql/025).
+  Future<({int drivers, int onlineNow})?> fetchHaulingAvailability() async {
+    try {
+      final rows = await _supabase.rpc('hauling_availability');
+      if (rows is! List || rows.isEmpty) return null;
+      final r = rows.first as Map;
+      return (drivers: (r['drivers'] as num?)?.toInt() ?? 0, onlineNow: (r['online_now'] as num?)?.toInt() ?? 0);
+    } catch (e, s) {
+      AppLog.warn('hauling_availability failed', e, s);
+      return null;
+    }
+  }
+
   /// Price of one hauling helper (platform_config.hauling_helper_fee).
   Future<double> fetchHaulingHelperFee() async {
     try {

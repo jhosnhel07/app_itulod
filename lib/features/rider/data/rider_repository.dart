@@ -51,6 +51,37 @@ class RiderHomeSnapshot {
   }
 }
 
+class RiderBalance {
+  final double onlineEarnings;
+  final double cashCommission;
+  final double payoutsMade;
+  final double collectionsMade;
+  /// Positive = iTULOD owes the rider; negative = the rider owes iTULOD.
+  final double net;
+  final double codUnremitted;
+
+  const RiderBalance({
+    required this.onlineEarnings,
+    required this.cashCommission,
+    required this.payoutsMade,
+    required this.collectionsMade,
+    required this.net,
+    required this.codUnremitted,
+  });
+
+  factory RiderBalance.fromJson(Map<String, dynamic> j) {
+    double n(String k) => (j[k] as num?)?.toDouble() ?? 0;
+    return RiderBalance(
+      onlineEarnings: n('online_earnings'),
+      cashCommission: n('cash_commission'),
+      payoutsMade: n('payouts_made'),
+      collectionsMade: n('collections_made'),
+      net: n('net'),
+      codUnremitted: n('cod_unremitted'),
+    );
+  }
+}
+
 class RiderRepository {
   final SupabaseClient _supabase;
 
@@ -446,6 +477,27 @@ class RiderRepository {
       averageRating: ratingCount > 0 ? ratingSum / ratingCount : 0,
       last7Days: daily,
     );
+  }
+
+  /// Balance with iTULOD (sql/024 rider_balance): GCash/wallet fares owed to
+  /// the rider minus commission owed on cash trips, net of settlements.
+  Future<RiderBalance?> fetchBalance() async {
+    try {
+      final rows = await _supabase.rpc('rider_balance');
+      if (rows is! List || rows.isEmpty) return null;
+      return RiderBalance.fromJson(Map<String, dynamic>.from(rows.first as Map));
+    } catch (e, s) {
+      AppLog.warn('rider_balance failed', e, s);
+      return null;
+    }
+  }
+
+  /// Parcel COD: the rider handed the collected cash to the sender.
+  Future<void> markCodRemitted(String parcelId) async {
+    await _supabase
+        .from('parcel_deliveries')
+        .update({'cod_remitted_at': DateTime.now().toUtc().toIso8601String()})
+        .eq('id', parcelId);
   }
 
   Future<void> updateFloatAmount(String riderId, double amount) async {

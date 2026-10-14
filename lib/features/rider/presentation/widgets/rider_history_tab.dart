@@ -4,7 +4,9 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../shared/models/booking_models.dart';
 import '../../../../shared/screens/booking_details_sheet.dart';
+import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/booking_card.dart';
+import 'rider_balance_card.dart' show riderBalanceProvider;
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/rider_repository.dart';
 
@@ -123,7 +125,57 @@ class _RiderHistoryList extends ConsumerWidget {
                 context: context,
                 isScrollControlled: true,
                 backgroundColor: Colors.transparent,
-                builder: (_) => BookingDetailsSheet(booking: bookings[i]),
+                builder: (sheetContext) {
+                  final b = bookings[i];
+                  // Parcel COD: hand the collected cash to the sender, then mark it.
+                  final codDue = b is ParcelDeliveryModel &&
+                      b.status == 'completed' &&
+                      b.codAmount > 0 &&
+                      b.codRemittedAt == null;
+                  return BookingDetailsSheet(
+                    booking: b,
+                    actions: [
+                      if (codDue)
+                        AppButton(
+                          text: 'COD handed over to sender',
+                          icon: Icons.payments_rounded,
+                          onPressed: () async {
+                            final ok = await showDialog<bool>(
+                              context: sheetContext,
+                              builder: (c) => AlertDialog(
+                                title: const Text('Hand over the COD?'),
+                                content: const Text('Confirm you have handed the collected cash to the sender.'),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Not yet')),
+                                  TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Confirm')),
+                                ],
+                              ),
+                            );
+                            if (ok != true) return;
+                            try {
+                              await ref.read(riderRepositoryProvider).markCodRemitted(b.id);
+                              ref.invalidate(riderHistoryProvider);
+                              ref.invalidate(riderBalanceProvider);
+                              if (sheetContext.mounted) Navigator.pop(sheetContext);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                  content: Text('COD marked as handed over. The sender has been notified.'),
+                                  backgroundColor: AppColors.success,
+                                ));
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                  content: Text('Could not update: $e'),
+                                  backgroundColor: AppColors.danger,
+                                ));
+                              }
+                            }
+                          },
+                        ),
+                    ],
+                  );
+                },
               ),
             ),
           ),

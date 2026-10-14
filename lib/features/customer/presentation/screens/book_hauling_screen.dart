@@ -61,12 +61,16 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
   DateTime? _scheduledFor;
   String _paymentMethod = 'cash';
   bool _submitting = false;
+  ({int drivers, int onlineNow})? _availability;
 
   @override
   void initState() {
     super.initState();
     ref.read(customerRepositoryProvider).fetchHaulingHelperFee().then((fee) {
       if (mounted) setState(() => _helperFee = fee);
+    });
+    ref.read(customerRepositoryProvider).fetchHaulingAvailability().then((a) {
+      if (mounted) setState(() => _availability = a);
     });
   }
 
@@ -404,6 +408,10 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
                   ),
                   const SizedBox(height: 14),
                   _fareBox(),
+                  if (_availability != null) ...[
+                    const SizedBox(height: 12),
+                    _availabilityNotice(_availability!),
+                  ],
                   const SizedBox(height: 18),
                   AppButton(
                     text: 'Book Hauling',
@@ -416,6 +424,36 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  /// Warns when no hauling driver could take the job right now (sql/025).
+  Widget _availabilityNotice(({int drivers, int onlineNow}) a) {
+    final none = a.drivers == 0 || a.onlineNow == 0;
+    final text = a.drivers == 0
+        ? 'No hauling drivers have joined iTULOD yet, so this request may not be accepted. We\'re onboarding Van / Pickup / Truck drivers now.'
+        : a.onlineNow == 0
+            ? '${a.drivers} hauling driver${a.drivers == 1 ? '' : 's'} on iTULOD, none online right now — they\'re notified of your request, or schedule it for later.'
+            : '${a.onlineNow} hauling driver${a.onlineNow == 1 ? '' : 's'} online now.';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: none ? AppColors.blush : AppColors.primary50,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(none ? Icons.warning_amber_rounded : Icons.local_shipping_rounded,
+              size: 18, color: none ? AppColors.secondaryDark : AppColors.primaryDark),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text,
+                style: AppTypography.caption.copyWith(
+                    fontSize: 12.5, color: none ? AppColors.secondaryDark : AppColors.primaryDark)),
+          ),
+        ],
       ),
     );
   }

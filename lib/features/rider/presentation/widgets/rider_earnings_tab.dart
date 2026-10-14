@@ -5,6 +5,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/rider_repository.dart';
+import 'rider_balance_card.dart';
 
 final riderEarningsProvider = FutureProvider.autoDispose<RiderEarnings>((ref) async {
   final repo = ref.watch(riderRepositoryProvider);
@@ -21,7 +22,10 @@ class RiderEarningsTab extends ConsumerWidget {
     final earningsAsync = ref.watch(riderEarningsProvider);
 
     return RefreshIndicator(
-      onRefresh: () async => ref.invalidate(riderEarningsProvider),
+      onRefresh: () async {
+        ref.invalidate(riderEarningsProvider);
+        ref.invalidate(riderBalanceProvider);
+      },
       child: earningsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => ListView(
@@ -40,6 +44,7 @@ class RiderEarningsTab extends ConsumerWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(20),
             children: [
+              const RiderBalanceCard(),
               Row(
                 children: [
                   Expanded(

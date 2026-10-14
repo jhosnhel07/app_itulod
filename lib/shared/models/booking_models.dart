@@ -75,6 +75,8 @@ class BookingBase {
 
   final double? tipAmount;
   final double? cancellationFee;
+  /// Whether the cancellation / no-show fee was collected (sql/024).
+  final bool? cancellationFeePaid;
   final String? promoCode;
   final double? discountAmount;
 
@@ -98,6 +100,7 @@ class BookingBase {
     this.distanceKm,
     this.tipAmount,
     this.cancellationFee,
+    this.cancellationFeePaid,
     this.promoCode,
     this.discountAmount,
   });
@@ -246,6 +249,7 @@ class TransportBookingModel extends BookingBase {
     super.acceptedAt,
     super.tipAmount,
     super.cancellationFee,
+    super.cancellationFeePaid,
     super.promoCode,
     super.discountAmount,
   }) : super(kind: BookingKind.transport);
@@ -277,6 +281,7 @@ class TransportBookingModel extends BookingBase {
       acceptedAt: _parseTimestamp(json['accepted_at']),
       tipAmount: _num(json['tip_amount']),
       cancellationFee: _num(json['cancellation_fee']),
+      cancellationFeePaid: json['cancellation_fee_paid'] as bool?,
       promoCode: json['promo_code'] as String?,
       discountAmount: _num(json['discount_amount']),
     );
@@ -327,6 +332,7 @@ class FoodDeliveryModel extends BookingBase {
     super.acceptedAt,
     super.tipAmount,
     super.cancellationFee,
+    super.cancellationFeePaid,
     super.promoCode,
     super.discountAmount,
   })  : _deliveryProofUrl = deliveryProofUrl,
@@ -365,6 +371,7 @@ class FoodDeliveryModel extends BookingBase {
       acceptedAt: _parseTimestamp(json['accepted_at']),
       tipAmount: _num(json['tip_amount']),
       cancellationFee: _num(json['cancellation_fee']),
+      cancellationFeePaid: json['cancellation_fee_paid'] as bool?,
       promoCode: json['promo_code'] as String?,
       discountAmount: _num(json['discount_amount']),
     );
@@ -384,6 +391,8 @@ class ParcelDeliveryModel extends BookingBase {
   final String instructions;
   final bool isRoundTrip;
   final double codAmount;
+  /// When the rider handed the collected COD to the sender (sql/024).
+  final DateTime? codRemittedAt;
   final String? _deliveryProofUrl;
 
   const ParcelDeliveryModel({
@@ -403,6 +412,7 @@ class ParcelDeliveryModel extends BookingBase {
     super.distanceKm,
     this.isRoundTrip = false,
     this.codAmount = 0.0,
+    this.codRemittedAt,
     String? deliveryProofUrl,
     super.riderId,
     required super.status,
@@ -418,6 +428,7 @@ class ParcelDeliveryModel extends BookingBase {
     super.acceptedAt,
     super.tipAmount,
     super.cancellationFee,
+    super.cancellationFeePaid,
     super.promoCode,
     super.discountAmount,
   })  : _deliveryProofUrl = deliveryProofUrl,
@@ -444,6 +455,7 @@ class ParcelDeliveryModel extends BookingBase {
       distanceKm: _num(json['distance_km']),
       isRoundTrip: json['is_round_trip'] as bool? ?? false,
       codAmount: _num(json['cod_amount']) ?? 0.0,
+      codRemittedAt: _parseTimestamp(json['cod_remitted_at']),
       deliveryProofUrl: json['delivery_proof_url'] as String?,
       riderId: json['rider_id'] as String?,
       status: json['status'] as String? ?? 'pending',
@@ -459,6 +471,7 @@ class ParcelDeliveryModel extends BookingBase {
       acceptedAt: _parseTimestamp(json['accepted_at']),
       tipAmount: _num(json['tip_amount']),
       cancellationFee: _num(json['cancellation_fee']),
+      cancellationFeePaid: json['cancellation_fee_paid'] as bool?,
       promoCode: json['promo_code'] as String?,
       discountAmount: _num(json['discount_amount']),
     );
@@ -525,6 +538,7 @@ class HaulingBookingModel extends BookingBase {
     super.acceptedAt,
     super.tipAmount,
     super.cancellationFee,
+    super.cancellationFeePaid,
     super.promoCode,
     super.discountAmount,
   })  : _deliveryProofUrl = deliveryProofUrl,
@@ -573,6 +587,7 @@ class HaulingBookingModel extends BookingBase {
       acceptedAt: _parseTimestamp(json['accepted_at']),
       tipAmount: _num(json['tip_amount']),
       cancellationFee: _num(json['cancellation_fee']),
+      cancellationFeePaid: json['cancellation_fee_paid'] as bool?,
       promoCode: json['promo_code'] as String?,
       discountAmount: _num(json['discount_amount']),
     );

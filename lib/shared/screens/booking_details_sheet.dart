@@ -287,7 +287,12 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
           if (booking.parcelDescription.isNotEmpty) _detailRow('Description', booking.parcelDescription),
           if (booking.instructions.isNotEmpty) _detailRow('Instructions', booking.instructions),
           if (booking.isRoundTrip) _detailRow('Round trip', 'Returns to the sender'),
-          if (booking.codAmount > 0) _detailRow('COD to collect', Formatters.currency(booking.codAmount)),
+          if (booking.codAmount > 0)
+            _detailRow(
+              'Cash on delivery',
+              '${Formatters.currency(booking.codAmount)}'
+              '${booking.codRemittedAt != null ? ' · handed to sender ${Formatters.date(booking.codRemittedAt!)}' : booking.status == 'completed' ? ' · collected, not yet handed over' : ''}',
+            ),
         ]),
       ];
     }
@@ -328,7 +333,16 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
       if (booking.tipAmount != null && booking.tipAmount! > 0)
         _detailRow('Tip', Formatters.currency(booking.tipAmount)),
       if (booking.cancellationFee != null && booking.cancellationFee! > 0)
-        _detailRow('Cancellation fee', Formatters.currency(booking.cancellationFee)),
+        _detailRow(
+          booking.isNoShow ? 'No-show fee' : 'Cancellation fee',
+          '${Formatters.currency(booking.cancellationFee)}'
+          '${booking.cancellationFeePaid == true ? ' · paid' : booking.cancellationFeePaid == false ? ' · unpaid (top up your wallet)' : ''}',
+        ),
+      if (booking.paymentStatus == 'refunded')
+        _detailRow(
+          'Refund',
+          '${Formatters.currency(((booking.finalFare ?? booking.estimatedFare ?? 0) - (booking.cancellationFee ?? 0)).clamp(0, double.infinity))} to your iTULOD wallet',
+        ),
     ]);
   }
 
