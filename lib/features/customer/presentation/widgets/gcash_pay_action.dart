@@ -106,6 +106,10 @@ class _GcashConfirmSheet extends ConsumerWidget {
       ] else if (b is ParcelDeliveryModel) ...[
         ('To', b.receiverName),
         ('Drop-off', b.receiverAddress),
+      ] else if (b is HaulingBookingModel) ...[
+        ('Pickup', b.pickupAddress),
+        ('Drop-off', b.dropoffAddress),
+        ('Items', b.categoryLabel),
       ],
     ];
 

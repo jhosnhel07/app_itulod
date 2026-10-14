@@ -1,4 +1,6 @@
 ﻿class VehicleModel {
+  bool get isHauling => service == 'hauling';
+
   final String id;
   final String name;
   final String icon;
@@ -6,6 +8,8 @@
   final double baseFare;
   final double perKmRate;
   final bool isAvailable;
+  /// 'standard' (rides, food, parcel) or 'hauling' (big / heavy loads).
+  final String service;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -17,6 +21,7 @@
     this.baseFare = 0.0,
     this.perKmRate = 0.0,
     this.isAvailable = true,
+    this.service = 'standard',
     this.createdAt,
     this.updatedAt,
   });
@@ -30,6 +35,7 @@
       baseFare: (json['base_fare'] as num?)?.toDouble() ?? 0.0,
       perKmRate: (json['per_km_rate'] as num?)?.toDouble() ?? 0.0,
       isAvailable: json['is_available'] as bool? ?? true,
+      service: json['service'] as String? ?? 'standard',
       createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'] as String) : null,
       updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'] as String) : null,
     );
@@ -44,6 +50,7 @@
       'base_fare': baseFare,
       'per_km_rate': perKmRate,
       'is_available': isAvailable,
+      'service': service,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
     };

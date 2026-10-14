@@ -1,0 +1,532 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
+import '../../../../core/constants/app_colors.dart';
+import '../../../../core/constants/app_typography.dart';
+import '../../../../core/services/route_service.dart';
+import '../../../../core/utils/fare_estimator.dart';
+import '../../../../core/utils/formatters.dart';
+import '../../../../shared/models/booking_models.dart';
+import '../../../../shared/models/vehicle_model.dart';
+import '../../../../shared/widgets/app_button.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../data/customer_repository.dart';
+import '../widgets/location_picker_field.dart';
+import '../widgets/payment_method_selector.dart';
+import '../widgets/route_preview_map.dart';
+import 'map_picker_screen.dart';
+
+const Map<String, IconData> _categoryIcons = {
+  'furniture': Icons.chair_rounded,
+  'appliances': Icons.kitchen_rounded,
+  'moving': Icons.house_rounded,
+  'construction': Icons.construction_rounded,
+  'goods': Icons.inventory_rounded,
+  'other': Icons.category_rounded,
+};
+
+/// Book a hauling job — big / heavy items with a hauling vehicle and
+/// optional helpers. Mirrors the web's Hauling form (customer.js
+/// wireHaulingForm): the estimate is vehicle fare + helpers, and the driver
+/// confirms the real fare at pickup before any online payment is charged.
+class BookHaulingScreen extends ConsumerStatefulWidget {
+  const BookHaulingScreen({super.key});
+
+  @override
+  ConsumerState<BookHaulingScreen> createState() => _BookHaulingScreenState();
+}
+
+class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _senderName = TextEditingController();
+  final _senderPhone = TextEditingController();
+  final _pickupAddress = TextEditingController();
+  final _receiverName = TextEditingController();
+  final _receiverPhone = TextEditingController();
+  final _dropoffAddress = TextEditingController();
+  final _description = TextEditingController();
+  final _weight = TextEditingController();
+  final _instructions = TextEditingController();
+
+  LatLng? _pickupPoint;
+  LatLng? _dropoffPoint;
+  RouteResult? _route;
+  bool _routing = false;
+  int _routeToken = 0;
+
+  VehicleModel? _vehicle;
+  String _category = 'furniture';
+  int _helpers = 0;
+  double _helperFee = 250;
+  DateTime? _scheduledFor;
+  String _paymentMethod = 'cash';
+  bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    ref.read(customerRepositoryProvider).fetchHaulingHelperFee().then((fee) {
+      if (mounted) setState(() => _helperFee = fee);
+    });
+  }
+
+  @override
+  void dispose() {
+    for (final c in [
+      _senderName, _senderPhone, _pickupAddress, _receiverName, _receiverPhone,
+      _dropoffAddress, _description, _weight, _instructions,
+    ]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  bool get _hasBothPoints => _pickupPoint != null && _dropoffPoint != null;
+
+  double? get _distanceKm {
+    if (_route != null) return _route!.distanceKm;
+    final a = _pickupPoint, b = _dropoffPoint;
+    if (a == null || b == null) return null;
+    return FareEstimator.roadDistanceKm(a, b);
+  }
+
+  double? get _vehicleFare {
+    final km = _distanceKm;
+    if (km == null || _vehicle == null) return null;
+    return FareEstimator.estimateFare(_vehicle, km);
+  }
+
+  double get _helpersFare => _helpers * _helperFee;
+
+  // ── Location ──────────────────────────────────────────────────────────
+
+  Future<void> _pickLocation({required bool isPickup}) async {
+    final picked = await MapPickerScreen.show(
+      context,
+      title: isPickup ? 'Set pickup location' : 'Set drop-off location',
+      pinColor: isPickup ? AppColors.success : AppColors.danger,
+      initialCenter: isPickup ? _pickupPoint : (_dropoffPoint ?? _pickupPoint),
+      initialAddress: (isPickup ? _pickupAddress : _dropoffAddress).text.trim().isEmpty
+          ? null
+          : (isPickup ? _pickupAddress : _dropoffAddress).text,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (isPickup) {
+        _pickupAddress.text = picked.address;
+        _pickupPoint = picked.point;
+      } else {
+        _dropoffAddress.text = picked.address;
+        _dropoffPoint = picked.point;
+      }
+    });
+    _refreshRoute();
+  }
+
+  Future<void> _refreshRoute() async {
+    final a = _pickupPoint, b = _dropoffPoint;
+    final token = ++_routeToken;
+    if (a == null || b == null) return;
+    setState(() {
+      _route = null;
+      _routing = true;
+    });
+    final result = await ref.read(routeServiceProvider).fetchRoute(a, b);
+    if (!mounted || token != _routeToken) return;
+    setState(() {
+      _route = result;
+      _routing = false;
+    });
+  }
+
+  Future<void> _pickSchedule() async {
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 14)),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(now.add(const Duration(hours: 1))));
+    if (time == null) return;
+    setState(() => _scheduledFor = DateTime(date.year, date.month, date.day, time.hour, time.minute));
+  }
+
+  // ── Validation (same rules as the web form) ───────────────────────────
+
+  static String? _optionalMobile(String? value) {
+    final raw = (value ?? '').replaceAll(RegExp(r'[\s-]'), '');
+    if (raw.isEmpty) return null;
+    final local = raw.startsWith('+63') ? '0${raw.substring(3)}' : raw;
+    return RegExp(r'^09\d{9}$').hasMatch(local) ? null : 'Enter a valid mobile number (09XX XXX XXXX)';
+  }
+
+  static String? _personName(String? value, String label) {
+    final v = (value ?? '').trim();
+    if (v.isEmpty) return 'Enter the $label name';
+    return RegExp(r"^[A-Za-zÀ-ÿñÑ .'-]+$").hasMatch(v) ? null : '$label name should be letters only';
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    final vehicle = _vehicle;
+    if (vehicle == null) return;
+    final scheduled = _scheduledFor;
+    if (scheduled != null) {
+      final now = DateTime.now();
+      String? problem;
+      if (scheduled.isBefore(now.add(const Duration(minutes: 30)))) {
+        problem = 'Scheduled pickup must be at least 30 minutes from now.';
+      } else if (scheduled.isAfter(now.add(const Duration(days: 14)))) {
+        problem = 'Scheduled pickup can be at most 14 days from now.';
+      }
+      if (problem != null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(problem), backgroundColor: AppColors.danger));
+        return;
+      }
+    }
+
+    setState(() => _submitting = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final profile = ref.read(authNotifierProvider).profile!;
+      await ref.read(customerRepositoryProvider).createHaulingBooking(
+            customerId: profile.id,
+            vehicle: vehicle,
+            pickupAddress: _pickupAddress.text,
+            dropoffAddress: _dropoffAddress.text,
+            pickupPoint: _pickupPoint,
+            dropoffPoint: _dropoffPoint,
+            senderName: _senderName.text,
+            senderPhone: _senderPhone.text,
+            receiverName: _receiverName.text,
+            receiverPhone: _receiverPhone.text,
+            itemCategory: _category,
+            itemDescription: _description.text,
+            estimatedWeightKg: double.tryParse(_weight.text.trim()),
+            helpers: _helpers,
+            helperFee: _helperFee,
+            instructions: _instructions.text,
+            scheduledFor: scheduled,
+            paymentMethod: _paymentMethod,
+            distanceKm: _distanceKm,
+          );
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+        content: Text(scheduled != null
+            ? 'Hauling scheduled for ${Formatters.date(scheduled)}. We\'ll find a driver closer to the time.'
+            : _paymentMethod == 'cash'
+                ? 'Hauling booked! Waiting for a driver to accept.'
+                : 'Hauling booked! We\'ll ask you to pay once the driver confirms the fare at pickup.'),
+        backgroundColor: AppColors.success,
+      ));
+      Navigator.pop(context);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text('Booking failed: ${e.toString().replaceFirst('Exception: ', '')}'),
+        backgroundColor: AppColors.danger,
+      ));
+    }
+    if (mounted) setState(() => _submitting = false);
+  }
+
+  // ── UI ────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final vehiclesAsync = ref.watch(haulingVehiclesProvider);
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(title: const Text('Book Hauling')),
+      body: vehiclesAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Could not load vehicles.\n$e', textAlign: TextAlign.center)),
+        data: (vehicles) {
+          _vehicle ??= vehicles.isNotEmpty ? vehicles.first : null;
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Form(
+              key: _formKey,
+              onChanged: () => setState(() {}),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _section('Pickup', Icons.location_on_rounded, [
+                    TextFormField(
+                      controller: _senderName,
+                      decoration: const InputDecoration(hintText: 'Contact name *'),
+                      validator: (v) => _personName(v, 'Contact'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _senderPhone,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(hintText: 'Contact number (09XX XXX XXXX)'),
+                      validator: _optionalMobile,
+                    ),
+                    const SizedBox(height: 12),
+                    LocationPickerField(
+                      controller: _pickupAddress,
+                      hint: 'Tap to set the pickup point on the map',
+                      isPickup: true,
+                      emptyError: 'Set a pickup address',
+                      onTap: () => _pickLocation(isPickup: true),
+                    ),
+                  ]),
+                  const SizedBox(height: 14),
+                  _section('Drop-off', Icons.flag_rounded, [
+                    TextFormField(
+                      controller: _receiverName,
+                      decoration: const InputDecoration(hintText: 'Receiver name *'),
+                      validator: (v) => _personName(v, 'Receiver'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _receiverPhone,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(hintText: 'Contact number (09XX XXX XXXX)'),
+                      validator: _optionalMobile,
+                    ),
+                    const SizedBox(height: 12),
+                    LocationPickerField(
+                      controller: _dropoffAddress,
+                      hint: 'Tap to set the drop-off point on the map',
+                      isPickup: false,
+                      emptyError: 'Set a drop-off address',
+                      onTap: () => _pickLocation(isPickup: false),
+                    ),
+                  ]),
+                  if (_hasBothPoints) ...[
+                    const SizedBox(height: 14),
+                    RoutePreviewMap(pickup: _pickupPoint!, destination: _dropoffPoint!, routePoints: _route?.points),
+                  ],
+                  const SizedBox(height: 14),
+                  _section('What are we moving?', Icons.inventory_2_rounded, [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final entry in haulingCategories.entries)
+                          ChoiceChip(
+                            avatar: Icon(_categoryIcons[entry.key], size: 16,
+                                color: _category == entry.key ? Colors.white : AppColors.primary),
+                            label: Text(entry.value),
+                            selected: _category == entry.key,
+                            showCheckmark: false,
+                            selectedColor: AppColors.primary,
+                            labelStyle: TextStyle(color: _category == entry.key ? Colors.white : null, fontSize: 12.5),
+                            onSelected: (_) => setState(() => _category = entry.key),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _description,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                          hintText: 'Items to move * (e.g. 1 refrigerator, 1 queen bed, 6 boxes)'),
+                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Describe what we\'re moving' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _weight,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(hintText: 'Approx. total weight in kg (optional)'),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Helpers to load & unload', style: AppTypography.bodyBold.copyWith(fontSize: 14)),
+                              Text('${Formatters.currency(_helperFee)} per helper', style: AppTypography.caption),
+                            ],
+                          ),
+                        ),
+                        _Stepper(
+                          value: _helpers,
+                          min: 0,
+                          max: 4,
+                          onChanged: (v) => setState(() => _helpers = v),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _instructions,
+                      maxLines: 2,
+                      decoration: const InputDecoration(hintText: 'Instructions (e.g. 2nd floor, narrow stairs)'),
+                    ),
+                  ]),
+                  const SizedBox(height: 14),
+                  DropdownButtonFormField<VehicleModel>(
+                    initialValue: _vehicle,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Vehicle *',
+                      prefixIcon: Icon(Icons.local_shipping_rounded),
+                    ),
+                    items: [
+                      for (final v in vehicles)
+                        DropdownMenuItem(
+                          value: v,
+                          child: Text('${v.name} — ${Formatters.currency(v.baseFare)} + ${Formatters.currency(v.perKmRate)}/km',
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                    ],
+                    onChanged: (v) => setState(() => _vehicle = v),
+                    validator: (v) => v == null ? 'Choose a vehicle' : null,
+                  ),
+                  const SizedBox(height: 14),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.schedule_rounded),
+                      title: Text(_scheduledFor == null
+                          ? 'Schedule for later (optional)'
+                          : 'Scheduled for ${Formatters.date(_scheduledFor!)}'),
+                      trailing: _scheduledFor == null
+                          ? const Icon(Icons.chevron_right_rounded)
+                          : IconButton(
+                              icon: const Icon(Icons.close_rounded),
+                              onPressed: () => setState(() => _scheduledFor = null),
+                            ),
+                      onTap: _pickSchedule,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  PaymentMethodSelector(
+                    value: _paymentMethod,
+                    onChanged: (v) => setState(() => _paymentMethod = v),
+                    onlineNote: 'You\'ll be asked to pay once the driver confirms the fare at pickup.',
+                  ),
+                  const SizedBox(height: 14),
+                  _fareBox(),
+                  const SizedBox(height: 18),
+                  AppButton(
+                    text: 'Book Hauling',
+                    icon: Icons.local_shipping_rounded,
+                    isLoading: _submitting,
+                    onPressed: vehicles.isEmpty ? null : _submit,
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _section(String title, IconData icon, List<Widget> children) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 18, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Text(title, style: AppTypography.bodyBold),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _fareBox() {
+    final vehicleFare = _vehicleFare;
+    final total = vehicleFare == null ? null : vehicleFare + _helpersFare;
+    Widget line(String label, String value, {bool bold = false}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label, style: bold ? AppTypography.bodyBold : AppTypography.caption.copyWith(color: AppColors.neutral600)),
+              Text(value, style: bold
+                  ? AppTypography.h3.copyWith(color: AppColors.primary)
+                  : AppTypography.caption.copyWith(color: AppColors.neutral700)),
+            ],
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.primary50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        children: [
+          line('Distance', Formatters.distance(_distanceKm)),
+          line('Vehicle fare', vehicleFare == null ? '—' : Formatters.currency(vehicleFare)),
+          line('Helpers ($_helpers × ${Formatters.currency(_helperFee)})', Formatters.currency(_helpersFare)),
+          const Divider(height: 18),
+          line('Estimated total', total == null ? '—' : Formatters.currency(total), bold: true),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Icon(_routing ? Icons.sync_rounded : Icons.info_outline_rounded, size: 13, color: AppColors.neutral500),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  !_hasBothPoints
+                      ? 'Set both locations on the map to see the fare.'
+                      : _routing
+                          ? 'Measuring the road route…'
+                          : 'The driver confirms the final fare after seeing the load.',
+                  style: AppTypography.caption.copyWith(fontSize: 11),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Stepper extends StatelessWidget {
+  final int value;
+  final int min;
+  final int max;
+  final ValueChanged<int> onChanged;
+
+  const _Stepper({required this.value, required this.min, required this.max, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            onPressed: value > min ? () => onChanged(value - 1) : null,
+            icon: const Icon(Icons.remove_rounded, size: 18),
+            color: AppColors.primary,
+          ),
+          Text('$value', style: AppTypography.bodyBold),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            onPressed: value < max ? () => onChanged(value + 1) : null,
+            icon: const Icon(Icons.add_rounded, size: 18),
+            color: AppColors.primary,
+          ),
+        ],
+      ),
+    );
+  }
+}

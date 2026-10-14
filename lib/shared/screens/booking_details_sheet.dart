@@ -207,6 +207,8 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
       if (b.distanceKm != null) _detailRow('Distance', Formatters.distance(b.distanceKm)),
       if (b is TransportBookingModel && (b as TransportBookingModel).scheduledFor != null)
         _detailRow('Scheduled for', Formatters.date((b as TransportBookingModel).scheduledFor!)),
+      if (b is HaulingBookingModel && (b as HaulingBookingModel).scheduledFor != null)
+        _detailRow('Scheduled for', Formatters.date((b as HaulingBookingModel).scheduledFor!)),
       const SizedBox(height: 8),
       Align(
         alignment: Alignment.centerLeft,
@@ -256,6 +258,21 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
                 ],
               ),
             ),
+        ]),
+      ];
+    }
+    if (booking is HaulingBookingModel) {
+      return [
+        _section('Hauling', [
+          _detailRow('Pickup contact', '${booking.senderName}${booking.senderPhone.isEmpty ? '' : ' • ${booking.senderPhone}'}'),
+          _detailRow('Receiver', '${booking.receiverName}${booking.receiverPhone.isEmpty ? '' : ' • ${booking.receiverPhone}'}'),
+          _detailRow('Items', '${booking.categoryLabel} — ${booking.itemDescription}'),
+          if (booking.estimatedWeightKg != null)
+            _detailRow('Approx. weight', '${booking.estimatedWeightKg!.toStringAsFixed(0)} kg'),
+          _detailRow('Helpers', booking.helpers == 0
+              ? 'None — driver only'
+              : '${booking.helpers} × ${Formatters.currency(booking.helperFee)}'),
+          if (booking.instructions.isNotEmpty) _detailRow('Instructions', booking.instructions),
         ]),
       ];
     }

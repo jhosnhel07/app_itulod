@@ -34,6 +34,7 @@ class _CustomerDashboardScreenState
         'transport_bookings',
         'food_deliveries',
         'parcel_deliveries',
+        'hauling_bookings',
         'notifications',
       ],
       onChange: () {

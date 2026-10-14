@@ -1,6 +1,6 @@
 import '../../core/utils/formatters.dart';
 
-enum BookingKind { transport, food, parcel }
+enum BookingKind { transport, food, parcel, hauling }
 
 extension BookingKindX on BookingKind {
   String get tableName {
@@ -11,6 +11,8 @@ extension BookingKindX on BookingKind {
         return 'food_deliveries';
       case BookingKind.parcel:
         return 'parcel_deliveries';
+      case BookingKind.hauling:
+        return 'hauling_bookings';
     }
   }
 
@@ -22,6 +24,8 @@ extension BookingKindX on BookingKind {
         return 'Food';
       case BookingKind.parcel:
         return 'Parcel';
+      case BookingKind.hauling:
+        return 'Hauling';
     }
   }
 }
@@ -32,6 +36,8 @@ BookingKind bookingKindFromTable(String table) {
       return BookingKind.food;
     case 'parcel_deliveries':
       return BookingKind.parcel;
+    case 'hauling_bookings':
+      return BookingKind.hauling;
     default:
       return BookingKind.transport;
   }
@@ -149,6 +155,8 @@ class BookingBase {
         return (this as FoodDeliveryModel).pickupAddress;
       case BookingKind.parcel:
         return (this as ParcelDeliveryModel).senderAddress;
+      case BookingKind.hauling:
+        return (this as HaulingBookingModel).pickupAddress;
     }
   }
 
@@ -160,6 +168,8 @@ class BookingBase {
         return (this as FoodDeliveryModel).deliveryAddress;
       case BookingKind.parcel:
         return (this as ParcelDeliveryModel).receiverAddress;
+      case BookingKind.hauling:
+        return (this as HaulingBookingModel).dropoffAddress;
     }
   }
 
@@ -174,6 +184,9 @@ class BookingBase {
       case BookingKind.parcel:
         final b = this as ParcelDeliveryModel;
         return '${b.senderAddress} → ${b.receiverAddress}';
+      case BookingKind.hauling:
+        final b = this as HaulingBookingModel;
+        return '${b.pickupAddress} → ${b.dropoffAddress}';
     }
   }
 
@@ -451,6 +464,131 @@ class ParcelDeliveryModel extends BookingBase {
     );
   }
 }
+
+/// Big / heavy items with a hauling vehicle and optional helpers
+/// (`hauling_bookings`, sql/022). Lifecycle mirrors a parcel.
+class HaulingBookingModel extends BookingBase {
+  final String pickupAddress;
+  final String dropoffAddress;
+  final double? pickupLat;
+  final double? pickupLng;
+  final double? dropoffLat;
+  final double? dropoffLng;
+  final String senderName;
+  final String senderPhone;
+  final String receiverName;
+  final String receiverPhone;
+  /// furniture | appliances | moving | construction | goods | other
+  final String itemCategory;
+  final String itemDescription;
+  final double? estimatedWeightKg;
+  final int helpers;
+  final double helperFee;
+  final String instructions;
+  final DateTime? scheduledFor;
+  final String? _deliveryProofUrl;
+
+  const HaulingBookingModel({
+    required super.id,
+    required super.customerId,
+    required this.pickupAddress,
+    required this.dropoffAddress,
+    this.pickupLat,
+    this.pickupLng,
+    this.dropoffLat,
+    this.dropoffLng,
+    required this.senderName,
+    this.senderPhone = '',
+    required this.receiverName,
+    this.receiverPhone = '',
+    this.itemCategory = 'other',
+    required this.itemDescription,
+    this.estimatedWeightKg,
+    this.helpers = 0,
+    this.helperFee = 0,
+    this.instructions = '',
+    this.scheduledFor,
+    String? deliveryProofUrl,
+    super.vehicleId,
+    super.distanceKm,
+    super.riderId,
+    required super.status,
+    super.estimatedFare,
+    super.finalFare,
+    super.paymentMethod,
+    super.paymentStatus,
+    super.paymongoReference,
+    super.rating,
+    super.review,
+    super.cancelledReason,
+    required super.createdAt,
+    super.acceptedAt,
+    super.tipAmount,
+    super.cancellationFee,
+    super.promoCode,
+    super.discountAmount,
+  })  : _deliveryProofUrl = deliveryProofUrl,
+        super(kind: BookingKind.hauling);
+
+  @override
+  String? get deliveryProofUrl => _deliveryProofUrl;
+
+  String get categoryLabel => haulingCategoryLabel(itemCategory);
+
+  factory HaulingBookingModel.fromJson(Map<String, dynamic> json) {
+    return HaulingBookingModel(
+      id: json['id'] as String,
+      customerId: json['customer_id'] as String,
+      pickupAddress: json['pickup_address'] as String? ?? '',
+      dropoffAddress: json['dropoff_address'] as String? ?? '',
+      pickupLat: _num(json['pickup_lat']),
+      pickupLng: _num(json['pickup_lng']),
+      dropoffLat: _num(json['dropoff_lat']),
+      dropoffLng: _num(json['dropoff_lng']),
+      senderName: json['sender_name'] as String? ?? '',
+      senderPhone: json['sender_phone'] as String? ?? '',
+      receiverName: json['receiver_name'] as String? ?? '',
+      receiverPhone: json['receiver_phone'] as String? ?? '',
+      itemCategory: json['item_category'] as String? ?? 'other',
+      itemDescription: json['item_description'] as String? ?? '',
+      estimatedWeightKg: _num(json['estimated_weight_kg']),
+      helpers: (json['helpers'] as num?)?.toInt() ?? 0,
+      helperFee: _num(json['helper_fee']) ?? 0,
+      instructions: json['instructions'] as String? ?? '',
+      scheduledFor: _parseTimestamp(json['scheduled_for']),
+      deliveryProofUrl: json['delivery_proof_url'] as String?,
+      vehicleId: json['vehicle_id'] as String?,
+      distanceKm: _num(json['distance_km']),
+      riderId: json['rider_id'] as String?,
+      status: json['status'] as String? ?? 'pending',
+      estimatedFare: _num(json['estimated_fare']),
+      finalFare: _num(json['final_fare']),
+      paymentMethod: json['payment_method'] as String?,
+      paymentStatus: json['payment_status'] as String?,
+      paymongoReference: json['paymongo_reference'] as String?,
+      rating: json['rating'] as int?,
+      review: json['review'] as String?,
+      cancelledReason: json['cancelled_reason'] as String?,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      acceptedAt: _parseTimestamp(json['accepted_at']),
+      tipAmount: _num(json['tip_amount']),
+      cancellationFee: _num(json['cancellation_fee']),
+      promoCode: json['promo_code'] as String?,
+      discountAmount: _num(json['discount_amount']),
+    );
+  }
+}
+
+const Map<String, String> haulingCategories = {
+  'furniture': 'Furniture',
+  'appliances': 'Appliances',
+  'moving': 'House / office moving',
+  'construction': 'Construction materials',
+  'goods': 'Business goods / sacks',
+  'other': 'Other items',
+};
+
+String haulingCategoryLabel(String id) => haulingCategories[id] ?? 'Other items';
 
 /// One stop on a multi-stop ride (`ride_stops`, sql/016).
 class RideStop {

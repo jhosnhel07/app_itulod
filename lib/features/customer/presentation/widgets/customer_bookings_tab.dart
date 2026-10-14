@@ -41,7 +41,7 @@ class _CustomerBookingsTabState extends ConsumerState<CustomerBookingsTab>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: BookingKind.values.length, vsync: this);
   }
 
   @override
@@ -221,6 +221,7 @@ class _CustomerBookingsTabState extends ConsumerState<CustomerBookingsTab>
               Tab(text: 'Rides'),
               Tab(text: 'Food'),
               Tab(text: 'Parcels'),
+              Tab(text: 'Hauling'),
             ],
           ),
         ),

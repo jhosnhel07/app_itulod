@@ -53,6 +53,11 @@ final vehiclesListProvider = FutureProvider<List<VehicleModel>>((ref) async {
   return repo.getAvailableVehicles();
 });
 
+final haulingVehiclesProvider = FutureProvider<List<VehicleModel>>((ref) async {
+  final repo = ref.watch(authRepositoryProvider);
+  return repo.getHaulingVehicles();
+});
+
 final authNotifierProvider = StateNotifierProvider<AuthNotifier, AppAuthState>((ref) {
   final repo = ref.watch(authRepositoryProvider);
   return AuthNotifier(repo);

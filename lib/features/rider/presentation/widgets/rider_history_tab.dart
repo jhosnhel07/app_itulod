@@ -30,7 +30,7 @@ class _RiderHistoryTabState extends ConsumerState<RiderHistoryTab>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: BookingKind.values.length, vsync: this);
   }
 
   @override
@@ -55,6 +55,7 @@ class _RiderHistoryTabState extends ConsumerState<RiderHistoryTab>
               Tab(text: 'Rides'),
               Tab(text: 'Food'),
               Tab(text: 'Parcels'),
+              Tab(text: 'Hauling'),
             ],
           ),
         ),

@@ -387,7 +387,9 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
               Text(
                 booking.kind == BookingKind.food
                     ? 'Confirm the fare at pickup (items + delivery). You can attach a photo of the receipt.'
-                    : 'Confirm the fare once you\'ve seen the parcel.',
+                    : booking.kind == BookingKind.hauling
+                        ? 'Confirm the fare once you\'ve seen the load (vehicle + helpers).'
+                        : 'Confirm the fare once you\'ve seen the parcel.',
                 style: AppTypography.caption,
               ),
               const SizedBox(height: 8),
@@ -581,6 +583,22 @@ class _OrderDetails extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final b = booking;
+    if (b is HaulingBookingModel) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Hauling job', style: AppTypography.bodyBold),
+          const SizedBox(height: 4),
+          _line('Items', '${b.categoryLabel} — ${b.itemDescription}'),
+          if (b.estimatedWeightKg != null) _line('Weight', '~${b.estimatedWeightKg!.toStringAsFixed(0)} kg'),
+          _line('Helpers', b.helpers == 0 ? 'None — driver only' : '${b.helpers} (${Formatters.currency(b.helperFee)} each)'),
+          _line('Pickup', '${b.senderName}${b.senderPhone.isEmpty ? '' : ' · ${b.senderPhone}'}'),
+          _line('Receiver', '${b.receiverName}${b.receiverPhone.isEmpty ? '' : ' · ${b.receiverPhone}'}'),
+          if (b.scheduledFor != null) _line('Scheduled', Formatters.date(b.scheduledFor!)),
+          if (b.instructions.isNotEmpty) _line('Instructions', b.instructions),
+        ],
+      );
+    }
     if (b is ParcelDeliveryModel) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,

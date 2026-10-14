@@ -342,6 +342,71 @@ class CustomerRepository {
     });
   }
 
+  /// Books a hauling job (sql/022). Same trust model as the other kinds:
+  /// the estimate (vehicle fare + helpers) is computed here, and the driver
+  /// confirms the real fare at pickup — that's when GCash/wallet is charged.
+  Future<HaulingBookingModel> createHaulingBooking({
+    required String customerId,
+    required VehicleModel vehicle,
+    required String pickupAddress,
+    required String dropoffAddress,
+    LatLng? pickupPoint,
+    LatLng? dropoffPoint,
+    required String senderName,
+    String? senderPhone,
+    required String receiverName,
+    String? receiverPhone,
+    required String itemCategory,
+    required String itemDescription,
+    double? estimatedWeightKg,
+    int helpers = 0,
+    required double helperFee,
+    String instructions = '',
+    DateTime? scheduledFor,
+    required String paymentMethod,
+    double? distanceKm,
+  }) async {
+    final km = distanceKm ?? FareEstimator.simulateDistanceKm(pickupAddress, dropoffAddress);
+    final fare = FareEstimator.estimateFare(vehicle, km) + helpers * helperFee;
+    final row = await _supabase.from('hauling_bookings').insert({
+      'customer_id': customerId,
+      'vehicle_id': vehicle.id,
+      'pickup_address': pickupAddress.trim(),
+      'dropoff_address': dropoffAddress.trim(),
+      'pickup_lat': pickupPoint?.latitude,
+      'pickup_lng': pickupPoint?.longitude,
+      'dropoff_lat': dropoffPoint?.latitude,
+      'dropoff_lng': dropoffPoint?.longitude,
+      'sender_name': senderName.trim(),
+      'sender_phone': senderPhone?.trim(),
+      'receiver_name': receiverName.trim(),
+      'receiver_phone': receiverPhone?.trim(),
+      'item_category': itemCategory,
+      'item_description': itemDescription.trim(),
+      'estimated_weight_kg': estimatedWeightKg,
+      'helpers': helpers,
+      'helper_fee': helperFee,
+      'instructions': instructions.trim(),
+      if (scheduledFor != null) 'scheduled_for': scheduledFor.toUtc().toIso8601String(),
+      'distance_km': double.parse(km.toStringAsFixed(2)),
+      'estimated_fare': _round2(fare),
+      'status': 'pending',
+      'payment_method': paymentMethod,
+    }).select().single();
+    return HaulingBookingModel.fromJson(row);
+  }
+
+  /// Price of one hauling helper (platform_config.hauling_helper_fee).
+  Future<double> fetchHaulingHelperFee() async {
+    try {
+      final row = await _supabase.from('platform_config').select('hauling_helper_fee').maybeSingle();
+      return (row?['hauling_helper_fee'] as num?)?.toDouble() ?? 250;
+    } catch (e, s) {
+      AppLog.warn('fetchHaulingHelperFee failed', e, s);
+      return 250;
+    }
+  }
+
   Future<void> applyReferralCode(String code) async {
     await _invoke('apply-referral-code', {'code': code},
         fallbackError: 'Could not redeem that code.');
@@ -637,6 +702,8 @@ class CustomerRepository {
         return FoodDeliveryModel.fromJson(json);
       case BookingKind.parcel:
         return ParcelDeliveryModel.fromJson(json);
+      case BookingKind.hauling:
+        return HaulingBookingModel.fromJson(json);
     }
   }
 

@@ -97,7 +97,9 @@ class RiderRepository {
         .select(columns)
         .filter('rider_id', 'is', null)
         .eq('status', 'pending');
-    if (kind == BookingKind.transport) {
+    // Rides and hauling can be scheduled ahead; food/parcel can't. Hauling
+    // jobs only reach riders with a Van/Pickup/Truck (RLS is_hauling_rider()).
+    if (kind == BookingKind.transport || kind == BookingKind.hauling) {
       final visibleBy =
           DateTime.now().add(const Duration(minutes: 30)).toUtc().toIso8601String();
       q = q.or('scheduled_for.is.null,scheduled_for.lte.$visibleBy');
@@ -458,6 +460,8 @@ class RiderRepository {
         return FoodDeliveryModel.fromJson(json);
       case BookingKind.parcel:
         return ParcelDeliveryModel.fromJson(json);
+      case BookingKind.hauling:
+        return HaulingBookingModel.fromJson(json);
     }
   }
 }

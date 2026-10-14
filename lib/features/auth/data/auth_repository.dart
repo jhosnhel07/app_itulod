@@ -176,6 +176,8 @@ class AuthRepository {
     return RiderApplicationModel.fromJson(response);
   }
 
+  /// Vehicles for rides, food and parcel — hauling vehicles are listed
+  /// separately by [getHaulingVehicles].
   Future<List<VehicleModel>> getAvailableVehicles() async {
     final response = await _supabase
         .from('vehicles')
@@ -183,6 +185,20 @@ class AuthRepository {
         .eq('is_available', true)
         .order('name');
 
+    return (response as List)
+        .map((json) => VehicleModel.fromJson(json))
+        .where((v) => !v.isHauling)
+        .toList();
+  }
+
+  /// The hauling fleet (Pickup / Multicab, L300, trucks), cheapest first.
+  Future<List<VehicleModel>> getHaulingVehicles() async {
+    final response = await _supabase
+        .from('vehicles')
+        .select()
+        .eq('is_available', true)
+        .eq('service', 'hauling')
+        .order('base_fare');
     return (response as List).map((json) => VehicleModel.fromJson(json)).toList();
   }
 

@@ -112,6 +112,7 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
         'transport_bookings',
         'food_deliveries',
         'parcel_deliveries',
+        'hauling_bookings',
         'payments',
       ],
       onChange: () {

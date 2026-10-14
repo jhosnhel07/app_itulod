@@ -11,6 +11,7 @@ import '../../../../shared/widgets/status_badge.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/customer_repository.dart';
 import '../screens/book_food_screen.dart';
+import '../screens/book_hauling_screen.dart';
 import '../screens/book_parcel_screen.dart';
 import '../screens/book_ride_screen.dart';
 import 'customer_bookings_tab.dart' show authProfileIdProvider;
@@ -177,6 +178,14 @@ class CustomerHomeTab extends ConsumerWidget {
             color: AppColors.success,
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const BookParcelScreen())),
+          ),
+          _ServiceCard(
+            title: 'Hauling',
+            subtitle: 'Move furniture, appliances and big loads',
+            icon: Icons.local_shipping_rounded,
+            color: AppColors.primaryDark,
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const BookHaulingScreen())),
           ),
           const SizedBox(height: 18),
 

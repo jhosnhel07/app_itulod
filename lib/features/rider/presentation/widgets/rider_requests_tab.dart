@@ -37,6 +37,8 @@ class RiderRequestsTab extends ConsumerWidget {
         return Icons.restaurant_rounded;
       case BookingKind.parcel:
         return Icons.inventory_2_rounded;
+      case BookingKind.hauling:
+        return Icons.local_shipping_rounded;
     }
   }
 
@@ -110,7 +112,9 @@ class RiderRequestsTab extends ConsumerWidget {
                             child: Text(
                                 b is TransportBookingModel && b.scheduledFor != null
                                     ? 'Scheduled • ${Formatters.date(b.scheduledFor!)}'
-                                    : '${b.kind.label} • ${Formatters.dateOnly(b.createdAt)}',
+                                    : b is HaulingBookingModel && b.scheduledFor != null
+                                        ? 'Hauling • scheduled ${Formatters.date(b.scheduledFor!)}'
+                                        : '${b.kind.label} • ${Formatters.dateOnly(b.createdAt)}',
                                 style: AppTypography.captionDark,
                                 overflow: TextOverflow.ellipsis),
                           ),
@@ -122,6 +126,25 @@ class RiderRequestsTab extends ConsumerWidget {
                           style: AppTypography.bodyMedium.copyWith(fontSize: 14),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis),
+                      if (b is HaulingBookingModel) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary50,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            [
+                              b.categoryLabel,
+                              if (b.helpers > 0) '${b.helpers} helper${b.helpers == 1 ? '' : 's'}',
+                              if (b.estimatedWeightKg != null) '~${b.estimatedWeightKg!.toStringAsFixed(0)} kg',
+                            ].join(' · '),
+                            style: AppTypography.caption.copyWith(
+                                fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.primaryDark),
+                          ),
+                        ),
+                      ],
                       if (b.expiresAt != null) ...[
                         const SizedBox(height: 4),
                         Row(

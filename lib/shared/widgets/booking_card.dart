@@ -26,6 +26,8 @@ class BookingCard extends StatelessWidget {
         return (Icons.restaurant_rounded, AppColors.secondary);
       case BookingKind.parcel:
         return (Icons.inventory_2_rounded, AppColors.success);
+      case BookingKind.hauling:
+        return (Icons.local_shipping_rounded, AppColors.primaryDark);
     }
   }
 
