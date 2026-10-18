@@ -131,7 +131,7 @@ class CustomerHomeScreen extends ConsumerWidget {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: AppColors.neutral400),
+            Icon(Icons.chevron_right, color: AppColors.neutral400),
           ],
         ),
       ),

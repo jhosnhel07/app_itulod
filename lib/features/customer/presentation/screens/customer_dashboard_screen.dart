@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/theme_toggle_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
@@ -72,7 +73,7 @@ class _CustomerDashboardScreenState
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(64),
         child: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: AppColors.primaryGradient,
             boxShadow: AppColors.cardShadow,
           ),
@@ -110,6 +111,7 @@ class _CustomerDashboardScreenState
                       ],
                     ),
                   ),
+                  const ThemeToggleButton(color: Colors.white),
                 ],
               ),
             ),
@@ -118,7 +120,7 @@ class _CustomerDashboardScreenState
       ),
       body: SafeArea(top: false, child: tabs[_index]),
       bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           border: Border(top: BorderSide(color: AppColors.divider)),
         ),
         child: NavigationBar(

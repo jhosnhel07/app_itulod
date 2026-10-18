@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/sticky_action_bar.dart';
+import '../../../../shared/widgets/loading_skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -243,8 +245,16 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Book Hauling')),
+      bottomNavigationBar: StickyActionBar(
+        child: AppButton(
+          text: 'Book Hauling',
+          icon: Icons.local_shipping_rounded,
+          isLoading: _submitting,
+          onPressed: (vehiclesAsync.valueOrNull?.isEmpty ?? true) ? null : _submit,
+        ),
+      ),
       body: vehiclesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const SkeletonList(count: 3),
         error: (e, _) => Center(child: Text('Could not load vehicles.\n$e', textAlign: TextAlign.center)),
         data: (vehicles) {
           _vehicle ??= vehicles.isNotEmpty ? vehicles.first : null;
@@ -412,13 +422,7 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
                     const SizedBox(height: 12),
                     _availabilityNotice(_availability!),
                   ],
-                  const SizedBox(height: 18),
-                  AppButton(
-                    text: 'Book Hauling',
-                    icon: Icons.local_shipping_rounded,
-                    isLoading: _submitting,
-                    onPressed: vehicles.isEmpty ? null : _submit,
-                  ),
+                  const SizedBox(height: 16),
                 ],
               ),
             ),

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/loading_skeleton.dart';
+import '../../../../shared/widgets/empty_state.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
@@ -35,7 +37,7 @@ class NotificationsTab extends ConsumerWidget {
         ref.invalidate(unreadNotificationsProvider);
       },
       child: notificationsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const SkeletonList(),
         error: (e, _) => ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
@@ -56,10 +58,11 @@ class NotificationsTab extends ConsumerWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.notifications_none_rounded,
-                          size: 56, color: AppColors.neutral300),
-                      const SizedBox(height: 12),
-                      Text('No notifications yet', style: AppTypography.captionDark),
+                      const EmptyState(
+                        icon: Icons.notifications_none_rounded,
+                        title: 'No notifications yet',
+                        message: "Updates about your bookings will show up here.",
+                      ),
                     ],
                   ),
                 ),

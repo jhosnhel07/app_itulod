@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/rise_in.dart';
+import '../../../../shared/widgets/loading_skeleton.dart';
+import '../../../../shared/widgets/app_confirm_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -58,18 +61,15 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
     final cart = ref.read(cartProvider);
     final other = cart.restaurant;
     if (other != null && other.id != widget.restaurant.id && cart.items.isNotEmpty) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Start a new order?'),
-          content: Text('Switching restaurants clears your current order from ${other.name}.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep it')),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continue')),
-          ],
-        ),
+      final ok = await showAppConfirm(
+        context,
+        title: 'Switch restaurants?',
+        message: 'Your current order from ${other.name} will be cleared.',
+        confirmText: 'Switch',
+        cancelText: 'Keep my order',
+        icon: Icons.storefront_rounded,
       );
-      if (ok != true) return;
+      if (!ok) return;
     }
     ref.read(cartProvider.notifier).addItem(widget.restaurant, item);
   }
@@ -93,7 +93,7 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Menu')),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const SkeletonList(count: 5)
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
@@ -101,7 +101,7 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       colors: [AppColors.surface, AppColors.primary50],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -169,8 +169,11 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
                     child: Center(child: Text('No menu items available', style: AppTypography.caption)),
                   )
                 else
-                  for (final item in items) ...[
-                    _itemCard(item, cartIsHere ? (cartState.items[item.id]?.quantity ?? 0) : 0),
+                  for (final (i, item) in items.indexed) ...[
+                    RiseIn(
+                      index: i < 8 ? i : 0,
+                      child: _itemCard(item, cartIsHere ? (cartState.items[item.id]?.quantity ?? 0) : 0),
+                    ),
                     const SizedBox(height: 10),
                   ],
               ],
@@ -240,6 +243,19 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
       ),
       child: Row(
         children: [
+          if (item.imageUrl != null && item.imageUrl!.startsWith('http')) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                item.imageUrl!,
+                width: 64,
+                height: 64,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

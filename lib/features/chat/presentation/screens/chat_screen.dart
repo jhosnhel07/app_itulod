@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/loading_skeleton.dart';
+import '../../../../shared/widgets/empty_state.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
@@ -89,7 +91,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chat'),
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
         foregroundColor: Colors.black,
         elevation: 0.5,
       ),
@@ -102,9 +104,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 // Reversing them since we use reverse: true in ListView.
                 final reversedMessages = messages.reversed.toList();
                 if (reversedMessages.isEmpty) {
-                  return Center(
-                    child: Text('No messages yet — say hello!',
-                        style: AppTypography.caption),
+                  return const Center(
+                    child: EmptyState(
+                      icon: Icons.chat_bubble_outline_rounded,
+                      title: 'No messages yet',
+                      message: 'Say hello!',
+                    ),
                   );
                 }
 
@@ -143,7 +148,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   },
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () => const SkeletonList(count: 3),
               error: (e, st) => Center(child: Text('Error: $e')),
             ),
           ),
@@ -162,8 +167,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           SafeArea(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: AppColors.surface,
                 border: Border(top: BorderSide(color: AppColors.neutral200)),
               ),
               child: Row(

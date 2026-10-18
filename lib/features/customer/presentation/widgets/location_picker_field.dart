@@ -50,7 +50,7 @@ class LocationPickerField extends StatelessWidget {
           color: isPickup ? AppColors.success : AppColors.danger,
           size: isPickup ? 16 : 20,
         ),
-        suffixIcon: const Icon(Icons.map_outlined,
+        suffixIcon: Icon(Icons.map_outlined,
             size: 20, color: AppColors.iconMuted),
       ),
       validator: emptyError == null

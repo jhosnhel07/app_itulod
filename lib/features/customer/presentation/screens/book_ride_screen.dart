@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/sticky_action_bar.dart';
+import '../../../../shared/widgets/loading_skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -255,8 +257,14 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Book a Ride')),
+      bottomNavigationBar: StickyActionBar(
+        child: AppButton(
+          text: 'Review Booking',
+          onPressed: (vehiclesAsync.valueOrNull?.isEmpty ?? true) ? null : _submit,
+        ),
+      ),
       body: vehiclesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const SkeletonList(count: 3),
         error: (e, _) => Center(child: Text('Could not load vehicles.\n$e', textAlign: TextAlign.center)),
         data: (vehicles) {
           _vehicle ??= vehicles.isNotEmpty ? vehicles.first : null;
@@ -420,11 +428,7 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
                   ),
                   const SizedBox(height: 16),
                   _fareBox(),
-                  const SizedBox(height: 24),
-                  AppButton(
-                    text: 'Review Booking',
-                    onPressed: vehicles.isEmpty ? null : _submit,
-                  ),
+                  const SizedBox(height: 16),
                 ],
               ),
             ),

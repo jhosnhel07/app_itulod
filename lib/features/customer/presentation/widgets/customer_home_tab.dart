@@ -66,7 +66,7 @@ class CustomerHomeTab extends ConsumerWidget {
                 ),
                 const SizedBox(height: 18),
                 Material(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(14),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(14),
@@ -79,7 +79,7 @@ class CustomerHomeTab extends ConsumerWidget {
                           horizontal: 16, vertical: 14),
                       child: Row(
                         children: [
-                          const Icon(Icons.search_rounded,
+                          Icon(Icons.search_rounded,
                               color: AppColors.iconMuted, size: 20),
                           const SizedBox(width: 10),
                           Text(
@@ -198,11 +198,11 @@ class CustomerHomeTab extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: AppColors.blushBorder),
                   ),
-                  child: const Icon(Icons.verified_user_rounded,
+                  child: Icon(Icons.verified_user_rounded,
                       color: AppColors.secondaryDark, size: 22),
                 ),
                 const SizedBox(width: 12),
@@ -527,11 +527,11 @@ class _ServiceCard extends StatelessWidget {
                 ),
                 Container(
                   padding: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: AppColors.neutral100,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.chevron_right_rounded,
+                  child: Icon(Icons.chevron_right_rounded,
                       color: AppColors.neutral500, size: 18),
                 ),
               ],

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/loading_skeleton.dart';
+import '../../../../shared/widgets/empty_state.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../shared/models/booking_models.dart';
 import '../../../../shared/screens/booking_details_sheet.dart';
 import '../../../../shared/widgets/app_button.dart';
+import '../../../../shared/widgets/app_confirm_dialog.dart';
 import '../../../../shared/widgets/booking_card.dart';
 import 'rider_balance_card.dart' show riderBalanceProvider;
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -46,7 +49,7 @@ class _RiderHistoryTabState extends ConsumerState<RiderHistoryTab>
     return Column(
       children: [
         Container(
-          color: Colors.white,
+          color: AppColors.surface,
           child: TabBar(
             controller: _tabController,
             labelColor: AppColors.primary,
@@ -82,7 +85,7 @@ class _RiderHistoryList extends ConsumerWidget {
     final historyAsync = ref.watch(riderHistoryProvider(kind));
 
     return historyAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => const SkeletonList(),
       error: (e, _) => Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -102,10 +105,11 @@ class _RiderHistoryList extends ConsumerWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.inbox_rounded, size: 56, color: AppColors.neutral300),
-                      const SizedBox(height: 12),
-                      Text('No completed ${kind.label.toLowerCase()} jobs yet',
-                          style: AppTypography.captionDark),
+                      EmptyState(
+                        icon: Icons.history_rounded,
+                        title: 'No completed ${kind.label.toLowerCase()} jobs yet',
+                        message: 'Jobs you finish will be listed here.',
+                      ),
                     ],
                   ),
                 ),
@@ -140,18 +144,15 @@ class _RiderHistoryList extends ConsumerWidget {
                           text: 'COD handed over to sender',
                           icon: Icons.payments_rounded,
                           onPressed: () async {
-                            final ok = await showDialog<bool>(
-                              context: sheetContext,
-                              builder: (c) => AlertDialog(
-                                title: const Text('Hand over the COD?'),
-                                content: const Text('Confirm you have handed the collected cash to the sender.'),
-                                actions: [
-                                  TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Not yet')),
-                                  TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Confirm')),
-                                ],
-                              ),
+                            final ok = await showAppConfirm(
+                              sheetContext,
+                              title: 'COD handed over?',
+                              message: 'Confirm you have handed the collected cash to the sender.',
+                              confirmText: 'Yes, handed over',
+                              cancelText: 'Not yet',
+                              icon: Icons.payments_rounded,
                             );
-                            if (ok != true) return;
+                            if (!ok) return;
                             try {
                               await ref.read(riderRepositoryProvider).markCodRemitted(b.id);
                               ref.invalidate(riderHistoryProvider);

@@ -97,7 +97,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -121,7 +121,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 18),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, color: AppColors.neutral500),
+                    icon: Icon(Icons.close, color: AppColors.neutral500),
                     onPressed: () => Navigator.pop(sheetContext),
                   ),
                 ],

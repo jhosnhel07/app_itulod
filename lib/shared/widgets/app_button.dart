@@ -45,7 +45,7 @@ class AppButton extends StatelessWidget {
       case AppButtonType.secondary:
         bgColor = AppColors.secondary50;
         textColor = AppColors.secondaryDark;
-        borderSide = const BorderSide(color: AppColors.blushBorder, width: 1.5);
+        borderSide = BorderSide(color: AppColors.blushBorder, width: 1.5);
         break;
       case AppButtonType.outline:
         bgColor = Colors.white;

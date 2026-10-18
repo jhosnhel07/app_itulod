@@ -14,9 +14,21 @@ class Formatters {
     return _currencyFormatter.format(amount);
   }
 
+  /// "Today, 8:42 AM" / "Yesterday, 3:10 PM" / "Tomorrow, 9:00 AM" /
+  /// "Oct 12, 3:10 AM"; the year only when it isn't this year (web: formatDate).
   static String date(DateTime? dateTime) {
     if (dateTime == null) return '—';
-    return DateFormat('MMM d, yyyy • h:mm a').format(dateTime.toLocal());
+    final d = dateTime.toLocal();
+    final now = DateTime.now();
+    final time = DateFormat('h:mm a').format(d);
+    final dayDiff = DateTime(now.year, now.month, now.day)
+        .difference(DateTime(d.year, d.month, d.day))
+        .inDays;
+    if (dayDiff == 0) return 'Today, $time';
+    if (dayDiff == 1) return 'Yesterday, $time';
+    if (dayDiff == -1) return 'Tomorrow, $time';
+    final day = DateFormat(d.year == now.year ? 'MMM d' : 'MMM d, yyyy').format(d);
+    return '$day, $time';
   }
 
   static String dateOnly(DateTime? dateTime) {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/loading_skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
@@ -52,7 +53,7 @@ class RiderRequestsTab extends ConsumerWidget {
     return RefreshIndicator(
       onRefresh: () async => ref.invalidate(riderRequestsProvider),
       child: requestsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const SkeletonList(),
         error: (e, _) => ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
@@ -73,7 +74,7 @@ class RiderRequestsTab extends ConsumerWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.mark_email_read_outlined,
+                      Icon(Icons.mark_email_read_outlined,
                           size: 56, color: AppColors.neutral300),
                       const SizedBox(height: 12),
                       Text('No booking requests right now.',

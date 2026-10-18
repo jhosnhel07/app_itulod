@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import '../../../../shared/widgets/theme_toggle_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
@@ -25,6 +26,7 @@ class AdminDashboardScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Admin Console'),
         actions: [
+          const ThemeToggleButton(),
           IconButton(
             icon: const Icon(Icons.edit_outlined),
             tooltip: 'Edit profile',

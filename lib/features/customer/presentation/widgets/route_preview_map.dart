@@ -214,7 +214,7 @@ class _RiderBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(color: AppColors.primary.withValues(alpha: 0.4), blurRadius: 10),

@@ -1,5 +1,7 @@
 import 'dart:ui' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/rise_in.dart';
+import '../../../../shared/widgets/loading_skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -183,7 +185,7 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Order Food')),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const SkeletonList(count: 5)
           : (_entries == null || _entries!.isEmpty)
               ? const Center(child: Text('No restaurants available'))
               : _body(deliverTo),
@@ -262,7 +264,7 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
       children: [
         // ── Filter panel ──────────────────────────────────────────────────
         Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppColors.surface,
             border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
           ),
@@ -271,7 +273,7 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
             children: [
               TextField(
                 decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.search_rounded, color: AppColors.iconMuted),
+                  prefixIcon: Icon(Icons.search_rounded, color: AppColors.iconMuted),
                   hintText: 'Search a restaurant or dish',
                   isDense: true,
                   filled: true,
@@ -341,7 +343,7 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.search_off_rounded, size: 44, color: AppColors.primary100),
+                      Icon(Icons.search_off_rounded, size: 44, color: AppColors.primary100),
                       const SizedBox(height: 8),
                       Text('No matches', style: AppTypography.bodyBold),
                       const SizedBox(height: 2),
@@ -353,7 +355,10 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 6, 16, 20),
                   itemCount: rows.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, i) => _card(rows[i].e, rows[i].km, rows[i].hits),
+                  itemBuilder: (context, i) => RiseIn(
+                    index: i < 8 ? i : 0,
+                    child: _card(rows[i].e, rows[i].km, rows[i].hits),
+                  ),
                 ),
         ),
       ],
@@ -556,7 +561,7 @@ class _SelectTile extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.expand_more_rounded, size: 18, color: AppColors.iconMuted),
+            Icon(Icons.expand_more_rounded, size: 18, color: AppColors.iconMuted),
           ],
         ),
       ),
@@ -719,7 +724,7 @@ class _ChipScrollerState extends State<_ChipScroller> {
         ),
         child: Material(
           color: AppColors.surface,
-          shape: const CircleBorder(side: BorderSide(color: AppColors.cardBorder)),
+          shape: CircleBorder(side: BorderSide(color: AppColors.cardBorder)),
           elevation: 1.5,
           child: InkWell(
             customBorder: const CircleBorder(),

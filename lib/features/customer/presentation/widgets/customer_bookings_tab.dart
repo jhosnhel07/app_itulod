@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/loading_skeleton.dart';
+import '../../../../shared/widgets/empty_state.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
@@ -210,7 +212,7 @@ class _CustomerBookingsTabState extends ConsumerState<CustomerBookingsTab>
     return Column(
       children: [
         Container(
-          color: Colors.white,
+          color: AppColors.surface,
           child: TabBar(
             controller: _tabController,
             labelColor: AppColors.primary,
@@ -249,7 +251,7 @@ class _HistoryList extends ConsumerWidget {
     final historyAsync = ref.watch(customerHistoryProvider(kind));
 
     return historyAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => const SkeletonList(),
       error: (e, _) => Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -270,10 +272,11 @@ class _HistoryList extends ConsumerWidget {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.inbox_rounded, size: 56, color: AppColors.neutral300),
-                        const SizedBox(height: 12),
-                        Text('No ${kind.label.toLowerCase()} bookings yet',
-                            style: AppTypography.captionDark),
+                        EmptyState(
+                          icon: Icons.receipt_long_rounded,
+                          title: 'No ${kind.label.toLowerCase()} bookings yet',
+                          message: 'Your ${kind.label.toLowerCase()} bookings will show up here.',
+                        ),
                       ],
                     ),
                   ),

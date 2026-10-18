@@ -113,7 +113,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Future<void> _pickFile(void Function(File file) assign) async {
     final picked = await showModalBottomSheet<XFile?>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -333,7 +333,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.fromLTRB(18, 24, 18, 18),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: const Color(0x0A0F172A)),
                         boxShadow: const [
@@ -817,7 +817,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       .toList(),
                   onChanged: (v) => setState(() => _selectedVehicleModel = v),
                   decoration: InputDecoration(
-                    prefixIcon: const Padding(
+                    prefixIcon: Padding(
                       padding: EdgeInsets.only(left: 14, right: 10),
                       child: FaIcon(FontAwesomeIcons.tag, size: 15, color: AppColors.iconMuted),
                     ),
@@ -1056,7 +1056,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             height: 120,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: const LinearGradient(colors: [AppColors.brandOrange, AppColors.brandOrangeDark]),
+              gradient: LinearGradient(colors: [AppColors.brandOrange, AppColors.brandOrangeDark]),
               boxShadow: [
                 BoxShadow(color: AppColors.brandOrange.withValues(alpha: 0.35), blurRadius: 32, offset: const Offset(0, 8)),
               ],
@@ -1074,7 +1074,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const FaIcon(FontAwesomeIcons.clock, size: 13, color: AppColors.brandOrangeDark),
+                FaIcon(FontAwesomeIcons.clock, size: 13, color: AppColors.brandOrangeDark),
                 const SizedBox(width: 8),
                 Text(
                   AppStrings.pendingApproval,
@@ -1110,7 +1110,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               ),
               child: Row(
                 children: [
-                  const FaIcon(FontAwesomeIcons.envelopeCircleCheck,
+                  FaIcon(FontAwesomeIcons.envelopeCircleCheck,
                       size: 15, color: AppColors.brandOrangeDark),
                   const SizedBox(width: 10),
                   Expanded(

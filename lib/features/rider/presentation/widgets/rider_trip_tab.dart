@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/loading_skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -8,6 +9,7 @@ import '../../../../core/utils/formatters.dart';
 import '../../../../shared/models/booking_models.dart';
 import '../../../../shared/providers/booking_extras_providers.dart';
 import '../../../../shared/widgets/app_button.dart';
+import '../../../../shared/widgets/app_confirm_dialog.dart';
 import '../../../../shared/widgets/booking_route_map.dart';
 import '../../../../shared/widgets/status_badge.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -29,7 +31,7 @@ class RiderTripTab extends ConsumerWidget {
     return RefreshIndicator(
       onRefresh: () async => ref.invalidate(riderActiveBookingsProvider),
       child: activeAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const SkeletonList(count: 2),
         error: (e, _) => ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
@@ -50,7 +52,7 @@ class RiderTripTab extends ConsumerWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.two_wheeler_rounded,
+                      Icon(Icons.two_wheeler_rounded,
                           size: 56, color: AppColors.neutral300),
                       const SizedBox(height: 12),
                       Text('No active trip. Accept a booking to get started.',
@@ -131,22 +133,14 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
   static String _clean(Object e) => e.toString().replaceFirst('Exception: ', '');
 
   Future<bool> _confirm(String title, String body, String action, {bool danger = false}) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Text(body),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Never mind')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: danger ? TextButton.styleFrom(foregroundColor: AppColors.danger) : null,
-            child: Text(action),
-          ),
-        ],
-      ),
+    return showAppConfirm(
+      context,
+      title: title,
+      message: body,
+      confirmText: action,
+      cancelText: 'Never mind',
+      danger: danger,
     );
-    return ok == true;
   }
 
   Future<void> _run(Future<void> Function() action, {String? success}) async {
@@ -429,7 +423,7 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
                       onPressed: _busy ? null : _release,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.neutral700,
-                        side: const BorderSide(color: AppColors.cardBorder),
+                        side: BorderSide(color: AppColors.cardBorder),
                       ),
                       icon: const Icon(Icons.undo_rounded, size: 18),
                       label: const Text('Release'),
@@ -651,18 +645,14 @@ class _OrderDetails extends ConsumerWidget {
                   tooltip: 'Mark out of stock',
                   icon: const Icon(Icons.remove_shopping_cart_outlined, size: 18, color: AppColors.danger),
                   onPressed: () async {
-                    final ok = await showDialog<bool>(
-                      context: context,
-                      builder: (c) => AlertDialog(
-                        title: const Text('Mark out of stock?'),
-                        content: Text('${item.name} will be crossed off the order.'),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-                          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Confirm')),
-                        ],
-                      ),
+                    final ok = await showAppConfirm(
+                      context,
+                      title: 'Mark as out of stock?',
+                      message: '${item.name} will be crossed off the order.',
+                      confirmText: 'Out of stock',
+                      icon: Icons.remove_shopping_cart_outlined,
                     );
-                    if (ok != true) return;
+                    if (!ok) return;
                     try {
                       await ref.read(riderRepositoryProvider).markItemOutOfStock(item.id);
                       ref.invalidate(foodOrderItemsProvider(b.id));

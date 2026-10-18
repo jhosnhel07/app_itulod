@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/loading_skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
@@ -49,7 +50,7 @@ class RiderHomeTab extends ConsumerWidget {
         await ref.read(riderHomeSnapshotProvider.future);
       },
       child: snapshotAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const SkeletonList(count: 3),
         error: (e, _) => ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
@@ -172,7 +173,7 @@ class _HeroCta extends StatelessWidget {
           FilledButton.icon(
             onPressed: onViewRequests,
             style: FilledButton.styleFrom(
-              backgroundColor: Colors.white,
+              backgroundColor: AppColors.surface,
               foregroundColor: AppColors.primaryDark,
               minimumSize: const Size(0, 46),
             ),

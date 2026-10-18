@@ -8,6 +8,7 @@ import '../../core/constants/app_typography.dart';
 import '../../core/theme/app_decorations.dart';
 import '../../core/utils/app_log.dart';
 import '../widgets/app_button.dart';
+import '../widgets/app_confirm_dialog.dart';
 import '../widgets/app_text_field.dart';
 import '../widgets/avatar_widget.dart';
 import '../../core/supabase/supabase_client.dart';
@@ -568,22 +569,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             type: AppButtonType.outline,
             icon: Icons.logout,
             onPressed: () async {
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('Sign out?'),
-                  content: const Text('You will need to log in again.'),
-                  actions: [
-                    TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('Cancel')),
-                    TextButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: const Text('Sign out')),
-                  ],
-                ),
+              final confirmed = await showAppConfirm(
+                context,
+                title: 'Sign out?',
+                message: 'You will need to log in again.',
+                confirmText: 'Sign out',
+                icon: Icons.logout_rounded,
               );
-              if (confirmed == true) {
+              if (confirmed) {
                 ref.read(authNotifierProvider.notifier).signOut();
               }
             },
@@ -610,7 +603,7 @@ class _AvatarSourceSheet extends StatelessWidget {
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(24),
           boxShadow: AppColors.elevatedShadow,
         ),
@@ -708,7 +701,7 @@ class _SourceTile extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded,
+              Icon(Icons.chevron_right_rounded,
                   color: AppColors.neutral400),
             ],
           ),

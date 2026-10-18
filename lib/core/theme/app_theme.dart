@@ -12,7 +12,10 @@ class AppTheme {
   static const double _radius = 16;
 
   static ThemeData get lightTheme {
-    final base = ThemeData(useMaterial3: true, brightness: Brightness.light);
+    // Follows the active palette (AppColors.dark), so this one getter builds
+    // the dark theme too.
+    final brightness = AppColors.dark ? Brightness.dark : Brightness.light;
+    final base = ThemeData(useMaterial3: true, brightness: brightness);
 
     final textTheme = GoogleFonts.interTextTheme(base.textTheme).copyWith(
       displaySmall: AppTypography.display,
@@ -35,6 +38,7 @@ class AppTheme {
       textTheme: textTheme,
       splashFactory: InkSparkle.splashFactory,
       colorScheme: ColorScheme.fromSeed(
+        brightness: brightness,
         seedColor: AppColors.primary,
         primary: AppColors.primary,
         onPrimary: Colors.white,
@@ -60,7 +64,7 @@ class AppTheme {
         scrolledUnderElevation: 0.5,
         centerTitle: true,
         titleTextStyle: AppTypography.h3,
-        iconTheme: const IconThemeData(color: AppColors.neutral800),
+        iconTheme: IconThemeData(color: AppColors.neutral800),
       ),
       cardTheme: CardThemeData(
         color: AppColors.surface,
@@ -70,10 +74,10 @@ class AppTheme {
         shadowColor: const Color(0x1A18294D),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(_radius),
-          side: const BorderSide(color: AppColors.cardBorder, width: 1),
+          side: BorderSide(color: AppColors.cardBorder, width: 1),
         ),
       ),
-      dividerTheme: const DividerThemeData(
+      dividerTheme: DividerThemeData(
         color: AppColors.divider,
         thickness: 1,
         space: 1,
@@ -96,7 +100,7 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.primary,
-          backgroundColor: Colors.white,
+          backgroundColor: AppColors.surface,
           minimumSize: const Size(0, 52),
           side: const BorderSide(color: AppColors.primary, width: 1.5),
           shape: RoundedRectangleBorder(
@@ -168,7 +172,7 @@ class AppTheme {
           insets: EdgeInsets.symmetric(horizontal: 8),
         ),
       ),
-      bottomSheetTheme: const BottomSheetThemeData(
+      bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: AppColors.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
@@ -193,11 +197,11 @@ class AppTheme {
         elevation: 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
-      listTileTheme: const ListTileThemeData(
+      listTileTheme: ListTileThemeData(
         iconColor: AppColors.neutral500,
         contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       ),
-      progressIndicatorTheme: const ProgressIndicatorThemeData(
+      progressIndicatorTheme: ProgressIndicatorThemeData(
         color: AppColors.primary,
         linearTrackColor: AppColors.primary50,
         circularTrackColor: Colors.transparent,
@@ -207,7 +211,7 @@ class AppTheme {
         foregroundColor: Colors.white,
         elevation: 3,
       ),
-      iconTheme: const IconThemeData(color: AppColors.neutral700),
+      iconTheme: IconThemeData(color: AppColors.neutral700),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.surface,

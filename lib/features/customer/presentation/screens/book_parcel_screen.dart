@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/sticky_action_bar.dart';
+import '../../../../shared/widgets/loading_skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -215,8 +217,15 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Send Parcel')),
+      bottomNavigationBar: StickyActionBar(
+        child: AppButton(
+          text: 'Book Parcel Delivery',
+          isLoading: _submitting,
+          onPressed: (vehiclesAsync.valueOrNull?.isEmpty ?? true) ? null : _submit,
+        ),
+      ),
       body: vehiclesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const SkeletonList(count: 3),
         error: (e, _) => Center(
             child: Text('Could not load vehicles.\n$e',
                 textAlign: TextAlign.center)),
@@ -389,11 +398,6 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
                   const SizedBox(height: 16),
                   _fareBox(),
                   const SizedBox(height: 16),
-                  AppButton(
-                    text: 'Book Parcel Delivery',
-                    isLoading: _submitting,
-                    onPressed: vehicles.isEmpty ? null : _submit,
-                  ),
                 ],
               ),
             ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/theme_toggle_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
@@ -164,7 +165,7 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(64),
         child: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: AppColors.primaryGradient,
             boxShadow: AppColors.cardShadow,
           ),
@@ -198,6 +199,7 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
                       ],
                     ),
                   ),
+                  const ThemeToggleButton(color: Colors.white),
                   if (approved) ...[
                     Text(
                       onlineAsync.valueOrNull == true ? 'Online' : 'Offline',
@@ -240,7 +242,7 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
         ],
       ),
       bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           border: Border(top: BorderSide(color: AppColors.divider)),
         ),
         child: NavigationBar(
@@ -348,7 +350,7 @@ class _VehicleInfoCard extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.cardBorder),
       ),

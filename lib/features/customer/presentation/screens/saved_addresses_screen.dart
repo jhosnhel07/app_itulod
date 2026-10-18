@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/loading_skeleton.dart';
+import '../../../../shared/widgets/empty_state.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../shared/widgets/app_button.dart';
+import '../../../../shared/widgets/app_confirm_dialog.dart';
 import '../providers/saved_addresses_provider.dart';
 import 'map_picker_screen.dart';
 
@@ -26,7 +29,7 @@ class SavedAddressesScreen extends ConsumerWidget {
         ],
       ),
       body: asyncAddresses.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const SkeletonList(),
         error: (e, _) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -65,11 +68,11 @@ class SavedAddressesScreen extends ConsumerWidget {
                 children: [
                   SizedBox(
                     height: MediaQuery.of(context).size.height * 0.6,
-                    child: Center(
-                      child: Text(
-                        'No saved addresses yet.\nAdd one to quickly book rides.',
-                        textAlign: TextAlign.center,
-                        style: AppTypography.body.copyWith(color: AppColors.neutral400),
+                    child: const Center(
+                      child: EmptyState(
+                        icon: Icons.bookmark_border_rounded,
+                        title: 'No saved addresses yet',
+                        message: 'Add one to book rides faster.',
                       ),
                     ),
                   ),
@@ -98,25 +101,15 @@ class SavedAddressesScreen extends ConsumerWidget {
                     trailing: IconButton(
                       icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
                       onPressed: () async {
-                        final confirmed = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('Delete Address?'),
-                            content: Text('Are you sure you want to delete ${addr.label}?'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: const Text('Cancel'),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, true),
-                                style: TextButton.styleFrom(foregroundColor: AppColors.danger),
-                                child: const Text('Delete'),
-                              ),
-                            ],
-                          ),
+                        final confirmed = await showAppConfirm(
+                          context,
+                          title: 'Remove ${addr.label}?',
+                          message: 'You can save it again any time.',
+                          confirmText: 'Remove',
+                          danger: true,
+                          icon: Icons.location_off_rounded,
                         );
-                        if (confirmed == true && context.mounted) {
+                        if (confirmed && context.mounted) {
                           try {
                             await ref.read(savedAddressesProvider.notifier).delete(addr.id);
                             if (context.mounted) {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../shared/widgets/ilocos_scene.dart';
 
 /// Centered auth card on a softly branded backdrop.
 class AuthCardScaffold extends StatelessWidget {
@@ -28,13 +29,15 @@ class AuthCardScaffold extends StatelessWidget {
             gradient: AppColors.primaryGradient,
             opacity: 0.16,
           ),
-          const _BackdropBlob(
+          _BackdropBlob(
             bottom: -140,
             left: -110,
             size: 320,
             gradient: AppColors.blushGradient,
             opacity: 0.5,
           ),
+          // Ilocos Norte strip along the bottom, behind the card.
+          const Positioned(left: 0, right: 0, bottom: 0, child: IlocosScene()),
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -51,7 +54,7 @@ class AuthCardScaffold extends StatelessWidget {
                           width: double.infinity,
                           padding: padding,
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: AppColors.surface,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: AppColors.cardBorder),
                             boxShadow: AppColors.elevatedShadow,

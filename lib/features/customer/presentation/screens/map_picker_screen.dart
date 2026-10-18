@@ -336,7 +336,7 @@ class _MapPickerScreenState extends ConsumerState<MapPickerScreen> {
               decoration: InputDecoration(
                 hintText: 'Search a place',
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: AppColors.surface,
                 prefixIcon: const Icon(Icons.search_rounded, size: 20),
                 suffixIcon: _searching
                     ? const Padding(
@@ -377,12 +377,12 @@ class _MapPickerScreenState extends ConsumerState<MapPickerScreen> {
                   padding: EdgeInsets.zero,
                   itemCount: _results.length,
                   separatorBuilder: (_, __) =>
-                      const Divider(height: 1, color: AppColors.neutral100),
+                      Divider(height: 1, color: AppColors.neutral100),
                   itemBuilder: (_, i) {
                     final place = _results[i];
                     return ListTile(
                       dense: true,
-                      leading: const Icon(Icons.place_outlined,
+                      leading: Icon(Icons.place_outlined,
                           size: 18, color: AppColors.neutral500),
                       title: Text(
                         place.displayName,
@@ -416,7 +416,7 @@ class _MapPickerScreenState extends ConsumerState<MapPickerScreen> {
                             padding: EdgeInsets.zero,
                             itemCount: saved.length,
                             separatorBuilder: (_, __) =>
-                                const Divider(height: 1, color: AppColors.neutral100),
+                                Divider(height: 1, color: AppColors.neutral100),
                             itemBuilder: (_, i) {
                               final addr = saved[i];
                               return ListTile(
@@ -472,7 +472,7 @@ class _MapPickerScreenState extends ConsumerState<MapPickerScreen> {
             padding: const EdgeInsets.only(right: 16, bottom: 10),
             child: FloatingActionButton.small(
               heroTag: 'map-picker-locate',
-              backgroundColor: Colors.white,
+              backgroundColor: AppColors.surface,
               foregroundColor: AppColors.primary,
               tooltip: 'Use my location',
               onPressed: _locating ? null : _useMyLocation,
@@ -487,8 +487,8 @@ class _MapPickerScreenState extends ConsumerState<MapPickerScreen> {
           ),
           Container(
             width: double.infinity,
-            decoration: const BoxDecoration(
-              color: Colors.white,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
               borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
               boxShadow: [
                 BoxShadow(color: Color(0x1A000000), blurRadius: 12, offset: Offset(0, -2)),

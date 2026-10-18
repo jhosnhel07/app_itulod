@@ -26,8 +26,8 @@ class AuthGradientButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = orange
-        ? const [AppColors.brandOrange, AppColors.brandOrangeDark]
-        : const [AppColors.brandBlue, AppColors.brandBlueDark];
+        ? [AppColors.brandOrange, AppColors.brandOrangeDark]
+        : [AppColors.brandBlue, AppColors.brandBlueDark];
     final shadow = orange
         ? AppColors.brandOrange.withValues(alpha: 0.35)
         : AppColors.brandBlue.withValues(alpha: 0.35);
@@ -132,7 +132,7 @@ class AuthBackButton extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const FaIcon(FontAwesomeIcons.arrowLeft, size: 13, color: AppColors.slate),
+            FaIcon(FontAwesomeIcons.arrowLeft, size: 13, color: AppColors.slate),
             const SizedBox(width: 7),
             Text(
               'Back',

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/sticky_action_bar.dart';
+import '../../../../shared/widgets/loading_skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -194,10 +196,20 @@ class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Checkout')),
+      bottomNavigationBar: cart.items.isEmpty
+          ? null
+          : StickyActionBar(
+              child: AppButton(
+                text: 'Place Order',
+                icon: Icons.check_rounded,
+                isLoading: _submitting,
+                onPressed: (vehiclesAsync.valueOrNull?.isEmpty ?? true) ? null : _submit,
+              ),
+            ),
       body: cart.items.isEmpty
           ? const Center(child: Text('Your cart is empty'))
           : vehiclesAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () => const SkeletonList(count: 2, padding: EdgeInsets.zero),
               error: (e, _) => Center(child: Text('Could not load vehicles.\n$e', textAlign: TextAlign.center)),
               data: (vehicles) {
                 _vehicle ??= vehicles.isEmpty
@@ -270,13 +282,7 @@ class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
                     ),
                     const SizedBox(height: 16),
                     _fareBox(cart.totalPrice),
-                    const SizedBox(height: 20),
-                    AppButton(
-                      text: 'Place Order',
-                      icon: Icons.check_rounded,
-                      isLoading: _submitting,
-                      onPressed: vehicles.isEmpty ? null : _submit,
-                    ),
+                    const SizedBox(height: 16),
                   ],
                 );
               },

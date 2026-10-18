@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/loading_skeleton.dart';
+import '../../../../shared/widgets/empty_state.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -20,7 +22,7 @@ class WalletScreen extends ConsumerWidget {
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('My Wallet')),
       body: walletAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const SkeletonList(count: 3),
         error: (e, _) => Center(child: Text('Error loading wallet: $e')),
         data: (wallet) {
           if (wallet == null) return const Center(child: Text('No wallet found.'));
@@ -38,17 +40,14 @@ class WalletScreen extends ConsumerWidget {
                 Text('Transaction History', style: AppTypography.h3),
                 const SizedBox(height: 12),
                 transactionsAsync.when(
-                  loading: () => const Center(child: CircularProgressIndicator()),
+                  loading: () => const SkeletonList(count: 3),
                   error: (e, _) => Text('Error loading transactions: $e'),
                   data: (transactions) {
                     if (transactions.isEmpty) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 40),
-                        child: Text(
-                          'No transactions yet.',
-                          style: AppTypography.captionDark,
-                          textAlign: TextAlign.center,
-                        ),
+                      return const EmptyState(
+                        icon: Icons.account_balance_wallet_outlined,
+                        title: 'No transactions yet',
+                        message: 'Top-ups, payments and refunds will show up here.',
                       );
                     }
                     return Column(
@@ -85,7 +84,7 @@ class WalletScreen extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           colors: [AppColors.primary, AppColors.primaryDark],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
