@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/constants/ilocos_norte.dart';
 import '../../../../shared/widgets/sticky_action_bar.dart';
 import '../../../../shared/widgets/loading_skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -206,6 +207,13 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
 
   void _submit() {
     if (!_formKey.currentState!.validate() || _vehicle == null) return;
+    if (!checkServiceArea(context, {
+      'Pickup': _pickupPoint,
+      'Destination': _destinationPoint,
+      for (var i = 0; i < _stopPoints.length; i++) 'Stop ${i + 1}': _stopPoints[i],
+    })) {
+      return;
+    }
     final fare = _fare;
     if (fare == null) return;
 

@@ -61,7 +61,7 @@ class MapConfig {
 
   /// Where the picker opens when the device location is unavailable.
   /// Change this to your service area.
-  static final LatLng defaultCenter = LatLng(10.3157, 123.8854); // Cebu City
+  static final LatLng defaultCenter = LatLng(18.1977, 120.5936); // Laoag City — iTULOD serves Ilocos Norte
 
   static const double pickerZoom = 16;
   static const double minZoom = 4;

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/constants/ilocos_norte.dart';
 import '../../../../shared/widgets/sticky_action_bar.dart';
 import '../../../../shared/widgets/loading_skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -124,6 +125,7 @@ class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
   }
 
   Future<void> _submit() async {
+    if (!checkServiceArea(context, {'Delivery address': _deliveryPoint})) return;
     final cart = ref.read(cartProvider);
     final restaurant = cart.restaurant;
     if (restaurant == null || cart.items.isEmpty) {

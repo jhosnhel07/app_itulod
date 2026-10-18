@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../../core/constants/ilocos_norte.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
@@ -116,7 +117,11 @@ class _MapPickerScreenState extends ConsumerState<MapPickerScreen> {
   @override
   void initState() {
     super.initState();
-    _center = widget.initialCenter ?? MapConfig.defaultCenter;
+    final start = widget.initialCenter;
+    // A saved spot from before the Ilocos Norte limit could be outside it —
+    // open on Laoag instead.
+    _center = (start != null && isInIlocosNorte(start)) ? start : MapConfig.defaultCenter;
+    _outside = !isInIlocosNorte(_center);
     _address = widget.initialAddress;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -141,8 +146,13 @@ class _MapPickerScreenState extends ConsumerState<MapPickerScreen> {
 
   // ── Address resolution ────────────────────────────────────────────────
 
+  /// The pin is outside Ilocos Norte — confirm/save are disabled.
+  bool _outside = false;
+
   void _onPositionChanged(MapCamera camera, bool hasGesture) {
     _center = camera.center;
+    final outside = !isInIlocosNorte(_center);
+    if (outside != _outside) setState(() => _outside = outside);
     if (!hasGesture) return;
 
     _userChosePlace = true;
@@ -185,6 +195,19 @@ class _MapPickerScreenState extends ConsumerState<MapPickerScreen> {
     setState(() => _locating = false);
 
     if (silent && _userChosePlace) {
+      if (_address == null) await _reverseGeocode();
+      return;
+    }
+
+    if (result.isSuccess && !isInIlocosNorte(result.point)) {
+      // The phone is outside the province — don't move the pin there.
+      if (!silent && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("You're outside Ilocos Norte — iTULOD only serves the province. Move the pin to your spot instead."),
+          backgroundColor: AppColors.warning,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
       if (_address == null) await _reverseGeocode();
       return;
     }
@@ -255,6 +278,14 @@ class _MapPickerScreenState extends ConsumerState<MapPickerScreen> {
   // ── Confirm ───────────────────────────────────────────────────────────
 
   void _confirm() {
+    if (!isInIlocosNorte(_center)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(outsideServiceAreaMessage),
+        backgroundColor: AppColors.danger,
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
     final address = _address?.trim();
     Navigator.of(context).pop(
       PickedPlace(
@@ -284,6 +315,8 @@ class _MapPickerScreenState extends ConsumerState<MapPickerScreen> {
               initialZoom: MapConfig.pickerZoom,
               minZoom: MapConfig.minZoom,
               maxZoom: MapConfig.maxZoom,
+              // The pin (map centre) can't leave the Ilocos Norte area.
+              cameraConstraint: CameraConstraint.containCenter(bounds: ilocosNorteMaxBounds),
               onPositionChanged: _onPositionChanged,
               interactionOptions: const InteractionOptions(
                 // Rotation makes the fixed-pin metaphor confusing, and there
@@ -507,7 +540,19 @@ class _MapPickerScreenState extends ConsumerState<MapPickerScreen> {
                     const SizedBox(height: 6),
                     SizedBox(
                       height: 44,
-                      child: _resolving
+                      child: _outside
+                          ? Row(
+                              children: [
+                                const Icon(Icons.wrong_location_rounded, size: 18, color: AppColors.danger),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(outsideServiceAreaMessage,
+                                      maxLines: 2,
+                                      style: AppTypography.captionDark.copyWith(color: AppColors.danger)),
+                                ),
+                              ],
+                            )
+                          : _resolving
                           ? Row(
                               children: [
                                 const SizedBox(
@@ -534,12 +579,12 @@ class _MapPickerScreenState extends ConsumerState<MapPickerScreen> {
                           child: AppButton(
                             text: 'Confirm location',
                             icon: Icons.check_rounded,
-                            onPressed: _confirm,
+                            onPressed: _outside ? null : _confirm,
                           ),
                         ),
                         const SizedBox(width: 12),
                         IconButton(
-                          onPressed: () => _promptSaveAddress(context),
+                          onPressed: _outside ? null : () => _promptSaveAddress(context),
                           icon: const Icon(Icons.star_outline_rounded),
                           tooltip: 'Save location',
                           style: IconButton.styleFrom(

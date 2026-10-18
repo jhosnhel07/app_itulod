@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+import '../constants/ilocos_norte.dart';
 import '../constants/map_config.dart';
 import '../utils/app_log.dart';
 
@@ -88,6 +89,9 @@ class GeocodingService {
         'limit': '$limit',
         'countrycodes': MapConfig.searchCountryCodes,
         'addressdetails': '1',
+        // Ilocos Norte only (iTULOD's service area).
+        'viewbox': ilocosNorteViewbox,
+        'bounded': '1',
       },
     );
 
@@ -103,6 +107,7 @@ class GeocodingService {
         final lon = double.tryParse('${map['lon']}');
         final name = map['display_name'] as String?;
         if (lat == null || lon == null || name == null || name.isEmpty) continue;
+        if (!isInIlocosNorte(LatLng(lat, lon))) continue;
         results.add(PlaceResult(displayName: name, point: LatLng(lat, lon)));
       }
       return results;

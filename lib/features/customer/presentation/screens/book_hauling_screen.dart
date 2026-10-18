@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/constants/ilocos_norte.dart';
 import '../../../../shared/widgets/sticky_action_bar.dart';
 import '../../../../shared/widgets/loading_skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -176,6 +177,7 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (!checkServiceArea(context, {'Pickup address': _pickupPoint, 'Drop-off address': _dropoffPoint})) return;
     final vehicle = _vehicle;
     if (vehicle == null) return;
     final scheduled = _scheduledFor;

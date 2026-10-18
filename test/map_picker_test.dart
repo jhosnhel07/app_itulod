@@ -55,6 +55,10 @@ double _sinh(double x) => (math.exp(x) - math.exp(-x)) / 2;
 
 const _cebu = LatLng(10.3157, 123.8854);
 
+/// Map-picker fixtures sit inside Ilocos Norte — the picker refuses spots
+/// outside iTULOD's service area.
+const _laoag = LatLng(18.1975, 120.5936);
+
 /// A device fix that only lands after [delay] — a cold GPS start.
 class _SlowLocationService extends LocationService {
   final LatLng point;
@@ -119,7 +123,7 @@ void main() {
         tester,
         MapPickerScreen(
           title: 'Set pickup location',
-          initialCenter: _cebu,
+          initialCenter: _laoag,
           initialAddress: 'Colon Street, Cebu City',
           autoLocate: false,
           tileProvider: _FakeTileProvider(),
@@ -151,7 +155,7 @@ void main() {
                     MaterialPageRoute(
                       builder: (_) => MapPickerScreen(
                         title: 'Set destination',
-                        initialCenter: _cebu,
+                        initialCenter: _laoag,
                         initialAddress: 'SM City Cebu',
                         autoLocate: false,
                         tileProvider: _FakeTileProvider(),
@@ -175,8 +179,8 @@ void main() {
 
       expect(result, isNotNull);
       expect(result!.address, 'SM City Cebu');
-      expect(result!.point.latitude, closeTo(_cebu.latitude, 0.0001));
-      expect(result!.point.longitude, closeTo(_cebu.longitude, 0.0001));
+      expect(result!.point.latitude, closeTo(_laoag.latitude, 0.0001));
+      expect(result!.point.longitude, closeTo(_laoag.longitude, 0.0001));
     });
 
     testWidgets('reverse-geocodes the opening pin into a short address',
@@ -185,7 +189,7 @@ void main() {
         tester,
         MapPickerScreen(
           title: 'Set pickup location',
-          initialCenter: _cebu,
+          initialCenter: _laoag,
           autoLocate: false,
           tileProvider: _FakeTileProvider(),
         ),
@@ -212,7 +216,7 @@ void main() {
         tester,
         MapPickerScreen(
           title: 'Set pickup location',
-          initialCenter: _cebu,
+          initialCenter: _laoag,
           autoLocate: false,
           tileProvider: _FakeTileProvider(),
         ),
@@ -225,15 +229,15 @@ void main() {
       await tester.pumpAndSettle();
 
       // Never an empty address: the booking form requires one.
-      expect(find.textContaining('10.31570, 123.88540'), findsOneWidget);
+      expect(find.textContaining('18.19750, 120.59360'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
     testWidgets('a search result moves the pin and fills the address',        (tester) async {
       final geocoder = _fakeGeocoder(searchRows: [
         {
-          'lat': '10.3187',
-          'lon': '123.9053',
+          'lat': '18.1781',
+          'lon': '120.5317',
           'display_name': 'Ayala Center Cebu, Cebu Business Park, Cebu City, Cebu',
         },
       ]);
@@ -250,7 +254,7 @@ void main() {
                     MaterialPageRoute(
                       builder: (_) => MapPickerScreen(
                         title: 'Set destination',
-                        initialCenter: _cebu,
+                        initialCenter: _laoag,
                         initialAddress: 'Colon Street',
                         autoLocate: false,
                         tileProvider: _FakeTileProvider(),
@@ -289,8 +293,8 @@ void main() {
 
       expect(result, isNotNull);
       expect(result!.address, 'Ayala Center Cebu, Cebu Business Park, Cebu City, Cebu');
-      expect(result!.point.latitude, closeTo(10.3187, 0.0001));
-      expect(result!.point.longitude, closeTo(123.9053, 0.0001));
+      expect(result!.point.latitude, closeTo(18.1781, 0.0001));
+      expect(result!.point.longitude, closeTo(120.5317, 0.0001));
     });
 
     // Regression: the picker asks the device for a location when it opens, and
@@ -299,7 +303,7 @@ void main() {
     // dragged to in the meantime, without saying anything.
     testWidgets('a late device fix does not override a spot the user dragged to',
         (tester) async {
-      const manila = LatLng(14.5995, 120.9842); // far from Cebu
+      const manila = LatLng(18.5636, 120.7875); // Pagudpud — far from Laoag
       PickedPlace? result;
 
       await pumpPhone(
@@ -363,17 +367,17 @@ void main() {
       expect(result, isNotNull);
       expect(
         (result!.point.latitude - manila.latitude).abs(),
-        greaterThan(1.0),
+        greaterThan(0.2),
         reason: "the late fix moved the map away from the user's choice",
       );
-      // The drag was a couple of hundred metres, so the pin stays near Cebu.
-      expect(result!.point.latitude, closeTo(_cebu.latitude, 0.5));
-      expect(result!.point.longitude, closeTo(_cebu.longitude, 0.5));
+      // The drag was a couple of hundred metres, so the pin stays near Laoag.
+      expect(result!.point.latitude, closeTo(_laoag.latitude, 0.1));
+      expect(result!.point.longitude, closeTo(_laoag.longitude, 0.1));
     });
 
     testWidgets('a device fix does centre the map when the user has not moved it',
         (tester) async {
-      const manila = LatLng(14.5995, 120.9842);
+      const manila = LatLng(18.5636, 120.7875); // Pagudpud
       PickedPlace? result;
 
       await pumpPhone(
