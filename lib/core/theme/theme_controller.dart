@@ -4,8 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 
-/// The user's light/dark choice. [system] (no choice saved yet) follows the
-/// phone's setting — same rule as the web dashboards' theme switch.
+/// The user's light/dark choice. [system] means no choice saved yet, which
+/// shows the light theme — same rule as the web dashboards' theme switch:
+/// light by default, dark only after the user taps the switch.
 enum AppThemeChoice { system, light, dark }
 
 final themeChoiceProvider =
@@ -40,12 +41,9 @@ class ThemeController extends StateNotifier<AppThemeChoice> {
   }
 }
 
-/// Resolve the choice against the device setting.
-bool resolveDark(AppThemeChoice choice, Brightness platform) => switch (choice) {
-      AppThemeChoice.dark => true,
-      AppThemeChoice.light => false,
-      AppThemeChoice.system => platform == Brightness.dark,
-    };
+/// Dark only when the user chose it; light otherwise (the phone's own
+/// light/dark setting doesn't change the app).
+bool resolveDark(AppThemeChoice choice, Brightness platform) => choice == AppThemeChoice.dark;
 
 /// Switch the static palette. Returns true when it actually changed, so the
 /// caller can rebuild every widget (many read AppColors directly).

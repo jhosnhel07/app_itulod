@@ -30,10 +30,6 @@ class _ITulodAppState extends ConsumerState<ITulodApp> with WidgetsBindingObserv
     super.dispose();
   }
 
-  /// The phone switched light/dark — matters while no choice is saved.
-  @override
-  void didChangePlatformBrightness() => setState(() {});
-
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);

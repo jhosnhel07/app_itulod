@@ -147,7 +147,7 @@ class _CustomerDashboardScreenState
                 child: const Icon(Icons.notifications_outlined),
               ),
               selectedIcon: const Icon(Icons.notifications_rounded),
-              label: 'Alerts',
+              label: 'Notifications',
             ),
             const NavigationDestination(
               icon: Icon(Icons.person_outline),

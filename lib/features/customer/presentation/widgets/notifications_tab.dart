@@ -90,45 +90,99 @@ class NotificationsTab extends ConsumerWidget {
                   ),
                 ),
               ),
+              // One card with divided rows — the same layout as the web's
+              // Notifications tab (css .notif-item), in both light and dark.
               Expanded(
-                child: ListView.builder(
+                child: ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-                  itemCount: items.length,
-                  itemBuilder: (_, i) {
-                    final n = items[i];
-                    final isUnread = n['is_read'] == false;
-                    final created = DateTime.tryParse(n['created_at']?.toString() ?? '');
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      color: isUnread ? AppColors.primary50 : Colors.white,
-                      child: ListTile(
-                        leading: Icon(
-                          isUnread
-                              ? Icons.notifications_active_rounded
-                              : Icons.notifications_none_rounded,
-                          color: isUnread ? AppColors.primary : AppColors.neutral400,
-                        ),
-                        title: Text(n['title']?.toString() ?? 'Notification',
-                            style: AppTypography.bodyBold.copyWith(fontSize: 14)),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(n['message']?.toString() ?? '',
-                                style: AppTypography.captionDark),
-                            const SizedBox(height: 2),
-                            Text(Formatters.date(created), style: AppTypography.caption),
-                          ],
-                        ),
-                        isThreeLine: true,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.cardBorder),
+                        boxShadow: AppColors.cardShadow,
                       ),
-                    );
-                  },
+                      child: Column(
+                        children: [
+                          for (var i = 0; i < items.length; i++) ...[
+                            if (i > 0) Divider(height: 1, color: AppColors.divider, indent: 16, endIndent: 16),
+                            _NotificationRow(items[i]),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// One notification: round bell (blue tint when unread), title, message and
+/// time, and a status dot on the right — mirrors the web's .notif-item.
+class _NotificationRow extends StatelessWidget {
+  final Map<String, dynamic> n;
+  const _NotificationRow(this.n);
+
+  @override
+  Widget build(BuildContext context) {
+    final unread = n['is_read'] == false;
+    final created = DateTime.tryParse(n['created_at']?.toString() ?? '');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: unread ? AppColors.primary.withValues(alpha: 0.12) : AppColors.neutral100,
+            ),
+            child: Icon(
+              unread ? Icons.notifications_active_rounded : Icons.notifications_none_rounded,
+              size: 19,
+              color: unread ? AppColors.primary : AppColors.neutral500,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  n['title']?.toString() ?? 'Notification',
+                  style: AppTypography.bodyBold.copyWith(
+                    fontSize: 14,
+                    fontWeight: unread ? FontWeight.w700 : FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(n['message']?.toString() ?? '',
+                    style: AppTypography.captionDark.copyWith(fontSize: 13, height: 1.45)),
+                const SizedBox(height: 4),
+                Text(Formatters.date(created), style: AppTypography.caption.copyWith(fontSize: 11.5)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Container(
+            width: 8,
+            height: 8,
+            margin: const EdgeInsets.only(top: 6),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: unread ? AppColors.primary : AppColors.cardBorder,
+            ),
+          ),
+        ],
       ),
     );
   }
