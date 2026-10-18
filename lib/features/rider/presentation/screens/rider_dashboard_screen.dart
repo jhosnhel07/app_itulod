@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/liquid_glass_nav_bar.dart';
 import '../../../../shared/widgets/theme_toggle_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -85,6 +86,8 @@ class RiderDashboardScreen extends ConsumerStatefulWidget {
 class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
     with RealtimeRefreshMixin {
   int _index = 0;
+  /// Bottom bar shrinks while the page scrolls down.
+  bool _navCompact = false;
 
   static const _requestsTab = 1;
   static const _tripTab = 2;
@@ -238,50 +241,32 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
       body: Column(
         children: [
           if (!approved) _approvalBanner(application?.status),
-          Expanded(child: SafeArea(top: false, child: tabs[_index])),
+          Expanded(
+            child: LiquidNavScrollWatcher(
+              onCompactChanged: (v) {
+                if (v != _navCompact) setState(() => _navCompact = v);
+              },
+              child: SafeArea(top: false, child: tabs[_index]),
+            ),
+          ),
         ],
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: AppColors.divider)),
-        ),
-        child: NavigationBar(
-          selectedIndex: _index,
-          onDestinationSelected: (i) => setState(() => _index = i),
-          labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home_rounded),
-              label: 'Home',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.inbox_outlined),
-              selectedIcon: Icon(Icons.inbox_rounded),
-              label: 'Requests',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.route_outlined),
-              selectedIcon: Icon(Icons.route_rounded),
-              label: 'Trip',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.payments_outlined),
-              selectedIcon: Icon(Icons.payments_rounded),
-              label: 'Earnings',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.history_outlined),
-              selectedIcon: Icon(Icons.history_rounded),
-              label: 'History',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.person_outline),
-              selectedIcon: Icon(Icons.person_rounded),
-              label: 'Profile',
-            ),
-          ],
-        ),
+      bottomNavigationBar: LiquidGlassNavBar(
+        currentIndex: _index,
+        compact: _navCompact,
+        labelsOnlyWhenSelected: true,
+        onTap: (i) => setState(() {
+          _index = i;
+          _navCompact = false;
+        }),
+        items: const [
+          LiquidNavItem(icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: 'Home'),
+          LiquidNavItem(icon: Icons.inbox_outlined, activeIcon: Icons.inbox_rounded, label: 'Requests'),
+          LiquidNavItem(icon: Icons.route_outlined, activeIcon: Icons.route_rounded, label: 'Trip'),
+          LiquidNavItem(icon: Icons.payments_outlined, activeIcon: Icons.payments_rounded, label: 'Earnings'),
+          LiquidNavItem(icon: Icons.history_outlined, activeIcon: Icons.history_rounded, label: 'History'),
+          LiquidNavItem(icon: Icons.person_outline, activeIcon: Icons.person_rounded, label: 'Profile'),
+        ],
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../shared/widgets/liquid_glass_nav_bar.dart';
 import '../../../../shared/widgets/theme_toggle_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -23,6 +24,8 @@ class _CustomerDashboardScreenState
     extends ConsumerState<CustomerDashboardScreen>
     with RealtimeRefreshMixin {
   int _index = 0;
+  /// Bottom bar shrinks while the page scrolls down.
+  bool _navCompact = false;
 
   static const _titles = ['Home', 'My Bookings', 'Notifications', 'Profile'];
 
@@ -118,44 +121,34 @@ class _CustomerDashboardScreenState
           ),
         ),
       ),
-      body: SafeArea(top: false, child: tabs[_index]),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: AppColors.divider)),
-        ),
-        child: NavigationBar(
-          selectedIndex: _index,
-          onDestinationSelected: (i) {
-            setState(() => _index = i);
-            if (i == 2) ref.invalidate(unreadNotificationsProvider);
-          },
-          destinations: [
-            const NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home_rounded),
-              label: 'Home',
-            ),
-            const NavigationDestination(
-              icon: Icon(Icons.receipt_long_outlined),
-              selectedIcon: Icon(Icons.receipt_long_rounded),
-              label: 'Bookings',
-            ),
-            NavigationDestination(
-              icon: Badge(
-                isLabelVisible: (unreadAsync.value ?? 0) > 0,
-                label: Text('${unreadAsync.value ?? 0}'),
-                child: const Icon(Icons.notifications_outlined),
-              ),
-              selectedIcon: const Icon(Icons.notifications_rounded),
-              label: 'Notifications',
-            ),
-            const NavigationDestination(
-              icon: Icon(Icons.person_outline),
-              selectedIcon: Icon(Icons.person_rounded),
-              label: 'Profile',
-            ),
-          ],
-        ),
+      body: LiquidNavScrollWatcher(
+        onCompactChanged: (v) {
+          if (v != _navCompact) setState(() => _navCompact = v);
+        },
+        child: SafeArea(top: false, child: tabs[_index]),
+      ),
+      bottomNavigationBar: LiquidGlassNavBar(
+        currentIndex: _index,
+        compact: _navCompact,
+        onTap: (i) {
+          setState(() {
+            _index = i;
+            _navCompact = false;
+          });
+          if (i == 2) ref.invalidate(unreadNotificationsProvider);
+        },
+        items: [
+          const LiquidNavItem(icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: 'Home'),
+          const LiquidNavItem(
+              icon: Icons.receipt_long_outlined, activeIcon: Icons.receipt_long_rounded, label: 'Bookings'),
+          LiquidNavItem(
+            icon: Icons.notifications_outlined,
+            activeIcon: Icons.notifications_rounded,
+            label: 'Notifications',
+            badge: unreadAsync.value ?? 0,
+          ),
+          const LiquidNavItem(icon: Icons.person_outline, activeIcon: Icons.person_rounded, label: 'Profile'),
+        ],
       ),
     );
   }
