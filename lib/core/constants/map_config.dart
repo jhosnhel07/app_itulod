@@ -21,7 +21,7 @@ class MapConfig {
 
   /// Sent as part of the User-Agent on every tile request. Some hosts block
   /// unidentified clients, and flutter_map defaults this to 'unknown'.
-  static const String userAgentPackageName = 'com.example.app_itulod';
+  static const String userAgentPackageName = 'com.itulod.app';
 
   /// Esri imagery serves native tiles well past z19 in cities; cap at 19 to
   /// match [maxZoom] and keep the reference overlays aligned.
