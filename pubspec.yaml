@@ -2,7 +2,7 @@ name: app_itulod
 description: "Intelligent Transport and Unified Logistics On-Demand Delivery Mobile Application"
 publish_to: 'none'
 
-version: 1.0.1+2
+version: 1.0.2+3
 
 environment:
   # flutter_map 8 requires Dart >= 3.6.0
@@ -60,6 +60,7 @@ dev_dependencies:
   flutter_native_splash: ^2.4.3
   # Used only by tool/make_splash_icon.dart (one-off asset prep).
   image: ^4.9.2
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
@@ -82,3 +83,15 @@ flutter_native_splash:
   ios: true
   web: false
 
+
+# Home-screen icon — run `dart run tool/make_launcher_icon.dart` then
+# `dart run flutter_launcher_icons` after changing the logo.
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/images/launcher_icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/launcher_foreground.png"
+  # launcher_foreground.png already keeps the emblem inside the safe zone.
+  adaptive_icon_foreground_inset: 0
+  min_sdk_android: 21
