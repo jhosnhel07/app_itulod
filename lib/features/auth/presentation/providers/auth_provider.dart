@@ -254,6 +254,7 @@ class AuthNotifier extends StateNotifier<AppAuthState> {
     required String email,
     required String password,
     String? phone,
+    File? photo,
   }) async {
     state = state.copyWith(status: AuthStatus.loading, clearError: true);
     lastSignupNeedsEmailConfirm = false;
@@ -265,6 +266,16 @@ class AuthNotifier extends StateNotifier<AppAuthState> {
         role: UserRole.customer,
         phone: phone,
       );
+
+      final newUser = authResponse.user;
+      if (photo != null && newUser != null && authResponse.session != null) {
+        try {
+          await _repo.setSignupPhoto(newUser.id, photo);
+        } catch (e, s) {
+          // The photo is optional — never fail the sign-up over it.
+          AppLog.warn('signUpCustomer: photo upload failed', e, s);
+        }
+      }
 
       if (authResponse.session != null) {
         // Match the web wizard: always end at the login screen, never
@@ -345,6 +356,15 @@ class AuthNotifier extends StateNotifier<AppAuthState> {
       licenseUrl = await upload(licensePhoto, 'license');
       orCrUrl = await upload(orCrPhoto, 'orcr');
       selfieUrl = await upload(selfiePhoto, 'selfie');
+      // The face photo is also the rider's profile picture (reviewed by the
+      // admin with the rest of the application).
+      if (selfiePhoto != null) {
+        try {
+          await _repo.setSignupPhoto(user.id, selfiePhoto);
+        } catch (e, s) {
+          AppLog.warn('signUpRider: profile photo upload failed', e, s);
+        }
+      }
       vehicleUrl = await upload(vehiclePhoto, 'vehicle');
       nbiUrl = await upload(nbiPhoto, 'nbi');
 

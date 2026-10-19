@@ -34,6 +34,10 @@ class ProfileModel {
   final String? phone;
   final UserRole role;
   final String? avatarUrl;
+
+  /// An approved rider's new photo, waiting for an admin (sql/030). Customers
+  /// keep seeing [avatarUrl] until it's approved.
+  final String? avatarPendingUrl;
   final bool isActive;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -49,6 +53,7 @@ class ProfileModel {
     this.phone,
     this.role = UserRole.customer,
     this.avatarUrl,
+    this.avatarPendingUrl,
     this.isActive = true,
     this.createdAt,
     this.updatedAt,
@@ -66,6 +71,7 @@ class ProfileModel {
       phone: json['phone'] as String?,
       role: UserRole.fromString(json['role'] as String?),
       avatarUrl: json['avatar_url'] as String?,
+      avatarPendingUrl: json['avatar_pending_url'] as String?,
       isActive: json['is_active'] as bool? ?? true,
       createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'] as String) : null,
       updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'] as String) : null,
@@ -97,6 +103,8 @@ class ProfileModel {
     String? phone,
     UserRole? role,
     String? avatarUrl,
+    String? avatarPendingUrl,
+    bool clearAvatarPending = false,
     bool? isActive,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -111,6 +119,7 @@ class ProfileModel {
       phone: phone ?? this.phone,
       role: role ?? this.role,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      avatarPendingUrl: clearAvatarPending ? null : (avatarPendingUrl ?? this.avatarPendingUrl),
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

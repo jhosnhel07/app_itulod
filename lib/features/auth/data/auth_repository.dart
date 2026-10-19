@@ -113,6 +113,21 @@ class AuthRepository {
     return response;
   }
 
+  /// Uploads the photo picked at sign-up (a customer's optional photo, or a
+  /// rider's face photo) as the profile picture.
+  Future<void> setSignupPhoto(String userId, File photo) async {
+    final ext = photo.path.split('.').last.toLowerCase();
+    final isPng = ext == 'png';
+    final path = '$userId/avatar-${DateTime.now().millisecondsSinceEpoch}.${isPng ? 'png' : 'jpg'}';
+    await _supabase.storage.from('avatars').upload(
+          path,
+          photo,
+          fileOptions: FileOptions(cacheControl: '3600', upsert: true, contentType: isPng ? 'image/png' : 'image/jpeg'),
+        );
+    final url = _supabase.storage.from('avatars').getPublicUrl(path);
+    await _supabase.from('profiles').update({'avatar_url': url}).eq('id', userId);
+  }
+
   Future<String> uploadRiderDocument({
     required String userId,
     required File file,

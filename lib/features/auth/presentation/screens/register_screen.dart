@@ -59,6 +59,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   File? _vehiclePhoto;
   File? _nbiPhoto;
 
+  /// Customer's optional profile photo (riders use [_selfiePhoto]).
+  File? _customerPhoto;
+
   bool _customerSuccess = false;
   bool _riderSuccess = false;
 
@@ -110,7 +113,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     return score;
   }
 
-  Future<void> _pickFile(void Function(File file) assign) async {
+  /// [face]: a profile photo — opens the front camera and keeps it smaller.
+  /// Documents are capped too, so phone photos upload on weak signal.
+  Future<void> _pickFile(void Function(File file) assign, {bool face = false}) async {
+    final maxSide = face ? 1024.0 : 1600.0;
     final picked = await showModalBottomSheet<XFile?>(
       context: context,
       backgroundColor: AppColors.surface,
@@ -127,7 +133,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 leading: const FaIcon(FontAwesomeIcons.camera, color: AppColors.brandBlue, size: 18),
                 title: const Text('Take a photo'),
                 onTap: () async {
-                  final file = await _picker.pickImage(source: ImageSource.camera, imageQuality: 80);
+                  final file = await _picker.pickImage(
+                    source: ImageSource.camera,
+                    imageQuality: 80,
+                    maxWidth: maxSide,
+                    maxHeight: maxSide,
+                    preferredCameraDevice: face ? CameraDevice.front : CameraDevice.rear,
+                  );
                   if (context.mounted) Navigator.pop(context, file);
                 },
               ),
@@ -135,7 +147,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 leading: const FaIcon(FontAwesomeIcons.image, color: AppColors.brandBlue, size: 18),
                 title: const Text('Choose from gallery'),
                 onTap: () async {
-                  final file = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+                  final file = await _picker.pickImage(
+                    source: ImageSource.gallery,
+                    imageQuality: 80,
+                    maxWidth: maxSide,
+                    maxHeight: maxSide,
+                  );
                   if (context.mounted) Navigator.pop(context, file);
                 },
               ),
@@ -265,6 +282,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           email: _emailController.text.trim(),
           password: _passwordController.text,
           phone: _phoneController.text.trim(),
+          photo: _customerPhoto,
         );
 
     if (!success && mounted) {
@@ -279,7 +297,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   List<String> get _missingDocuments => <String>[
         if (_licensePhoto == null) "Driver's License",
         if (_orCrPhoto == null) 'OR / CR Paper',
-        if (_selfiePhoto == null) 'Selfie Verification',
+        if (_selfiePhoto == null) 'Profile Photo',
         if (_vehiclePhoto == null) 'Vehicle Photo',
       ];
 
@@ -555,6 +573,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             AppStrings.personalInfoTitle,
             isRider ? AppStrings.personalInfoRiderSub : AppStrings.personalInfoCustomerSub,
           ),
+          if (!isRider)
+            _SignupPhotoPicker(
+              file: _customerPhoto,
+              onPick: () => _pickFile((f) => _customerPhoto = f, face: true),
+              onRemove: () => setState(() => _customerPhoto = null),
+            ),
           AuthTextField(
             label: 'Full Name',
             hint: 'Juan dela Cruz',
@@ -885,11 +909,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         ),
         const SizedBox(height: 14),
         _UploadZone(
-          label: 'Selfie Verification',
-          hint: 'Upload a clear selfie for identity confirmation',
+          label: 'Profile Photo (your face)',
+          hint: 'Face clearly visible — no sunglasses, helmet or mask. Customers see this photo when you accept their booking.',
           icon: FontAwesomeIcons.camera,
           file: _selfiePhoto,
-          onTap: () => _pickFile((f) => _selfiePhoto = f),
+          onTap: () => _pickFile((f) => _selfiePhoto = f, face: true),
         ),
         const SizedBox(height: 14),
         _UploadZone(
@@ -925,7 +949,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       ('Plate Number', _vehiclePlateController.text.trim().isEmpty ? 'Not provided' : _vehiclePlateController.text.trim()),
       ("Driver's License", _licensePhoto?.path.split(Platform.pathSeparator).last ?? 'Not uploaded'),
       ('OR / CR Paper', _orCrPhoto?.path.split(Platform.pathSeparator).last ?? 'Not uploaded'),
-      ('Selfie', _selfiePhoto?.path.split(Platform.pathSeparator).last ?? 'Not uploaded'),
+      ('Profile Photo', _selfiePhoto?.path.split(Platform.pathSeparator).last ?? 'Not uploaded'),
       ('Vehicle Photo', _vehiclePhoto?.path.split(Platform.pathSeparator).last ?? 'Not uploaded'),
       ('NBI Clearance', _nbiPhoto?.path.split(Platform.pathSeparator).last ?? 'Optional'),
     ];
@@ -1252,6 +1276,95 @@ class _RoleCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Customer's optional profile photo on the Personal step (web: the
+/// #customer-photo-group circle on register.html).
+class _SignupPhotoPicker extends StatelessWidget {
+  final File? file;
+  final VoidCallback onPick;
+  final VoidCallback onRemove;
+
+  const _SignupPhotoPicker({required this.file, required this.onPick, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    final picked = file;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFDFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFECDEDD), width: 1.5),
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: onPick,
+            child: Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFE8F3FE),
+                border: Border.all(color: const Color(0xFFCFE5FB), width: 2),
+                image: picked != null ? DecorationImage(image: FileImage(picked), fit: BoxFit.cover) : null,
+              ),
+              alignment: Alignment.center,
+              child: picked == null
+                  ? const FaIcon(FontAwesomeIcons.camera, size: 18, color: AppColors.brandBlue)
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onTap: onPick,
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    children: [
+                      Text(
+                        picked == null ? 'Add a profile photo' : 'Change photo',
+                        style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.brandBlue),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3EEED),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text('Optional',
+                            style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppColors.slate)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Helps your rider recognise you at pickup. You can skip this.',
+                  style: GoogleFonts.inter(fontSize: 12, color: AppColors.slate),
+                ),
+                if (picked != null)
+                  GestureDetector(
+                    onTap: onRemove,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text('Remove photo',
+                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.danger)),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -830,11 +830,22 @@ class CustomerRepository {
     return _supabase.storage.from('avatars').getPublicUrl(path);
   }
 
+  /// Saves a new profile photo. For an approved rider the database holds it
+  /// back for admin review (sql/030): the current photo stays in avatar_url
+  /// and the new one lands in avatar_pending_url — so read back what stuck.
   Future<ProfileModel> setAvatarUrl(ProfileModel profile, String url) async {
-    await _supabase.from('profiles').update({
-      'avatar_url': url,
-    }).eq('id', profile.id);
-    return profile.copyWith(avatarUrl: url);
+    final row = await _supabase
+        .from('profiles')
+        .update({'avatar_url': url})
+        .eq('id', profile.id)
+        .select('avatar_url, avatar_pending_url')
+        .single();
+    final pending = row['avatar_pending_url'] as String?;
+    return profile.copyWith(
+      avatarUrl: row['avatar_url'] as String?,
+      avatarPendingUrl: pending,
+      clearAvatarPending: pending == null,
+    );
   }
 
   // ── Saved Addresses ───────────────────────────────────────────────────

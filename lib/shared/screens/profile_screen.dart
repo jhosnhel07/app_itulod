@@ -115,6 +115,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         phone: _phoneController.text,
       );
 
+      var sentForReview = false;
       if (_pickedAvatar != null) {
         final bytes = await _pickedAvatar!.readAsBytes();
         final url = await repo.uploadAvatar(
@@ -123,15 +124,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           bytes: bytes,
         );
         updated = await repo.setAvatarUrl(updated, url);
+        // An approved rider's new photo waits for the admin (sql/030).
+        sentForReview = updated.avatarPendingUrl == url;
       }
 
       ref.read(authNotifierProvider.notifier).updateProfileLocally(updated);
       if (mounted) {
         setState(() => _pickedAvatar = null);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Profile updated!'),
-              backgroundColor: AppColors.success),
+          SnackBar(
+              content: Text(sentForReview
+                  ? 'Profile saved. Your new photo was sent to the admin for approval — customers see your current photo until then.'
+                  : 'Profile updated!'),
+              backgroundColor: sentForReview ? AppColors.warning : AppColors.success),
         );
       }
     } catch (e, s) {
@@ -422,6 +427,39 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                   ),
                 ),
+                if (profile?.avatarPendingUrl != null) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.hourglass_top_rounded, size: 15, color: Color(0xFFFDE68A)),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            'New photo waiting for admin approval',
+                            style: AppTypography.captionDark.copyWith(
+                              color: const Color(0xFFFDE68A),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else if (profile?.role == UserRole.rider) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Customers see this photo. A new one needs admin approval.',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.captionDark.copyWith(color: Colors.white.withValues(alpha: 0.85)),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 Text(
                   profile?.fullName ?? 'Your profile',
