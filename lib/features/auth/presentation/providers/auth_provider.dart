@@ -1,5 +1,6 @@
 ﻿import 'dart:async';
 import 'dart:io';
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/utils/app_log.dart';
@@ -92,14 +93,18 @@ class AuthNotifier extends StateNotifier<AppAuthState> {
   }
 
   void _init() {
-    _repo.authStateChanges.listen((data) async {
+    _authSub = _repo.authStateChanges.listen((data) async {
       final session = data.session;
       if (session == null) {
+        _stopProfileSync();
         state = const AppAuthState(status: AuthStatus.unauthenticated);
       } else {
         await refreshProfile();
       }
     });
+
+    // Back from the background: pick up anything changed on the web meanwhile.
+    _lifecycle = AppLifecycleListener(onResume: _syncProfileQuietly);
 
     // Check current state immediately
     if (_repo.currentUser != null) {
@@ -107,6 +112,73 @@ class AuthNotifier extends StateNotifier<AppAuthState> {
     } else {
       state = const AppAuthState(status: AuthStatus.unauthenticated);
     }
+  }
+
+  StreamSubscription<AuthState>? _authSub;
+  AppLifecycleListener? _lifecycle;
+  RealtimeChannel? _profileChannel;
+  String? _syncedProfileId;
+
+  /// Live profile sync with the web app: when this account's profile changes
+  /// anywhere (name, phone, photo, a rider's capital on hand), realtime pushes
+  /// the new row (web sql/029 adds profiles to the realtime publication).
+  void _startProfileSync(String profileId) {
+    if (_syncedProfileId == profileId && _profileChannel != null) return;
+    _stopProfileSync();
+    _syncedProfileId = profileId;
+    _profileChannel = Supabase.instance.client
+        .channel('profile-sync-$profileId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'profiles',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: profileId,
+          ),
+          callback: (payload) {
+            if (!mounted || state.status != AuthStatus.authenticated) return;
+            try {
+              state = state.copyWith(profile: ProfileModel.fromJson(payload.newRecord));
+            } catch (e, s) {
+              AppLog.warn('profile sync: bad payload', e, s);
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  void _stopProfileSync() {
+    final channel = _profileChannel;
+    _profileChannel = null;
+    _syncedProfileId = null;
+    if (channel != null) Supabase.instance.client.removeChannel(channel);
+  }
+
+  /// Re-reads the profile (and a rider's application, e.g. a vehicle change
+  /// by the admin) without ever logging the user out on a network hiccup.
+  Future<void> _syncProfileQuietly() async {
+    if (state.status != AuthStatus.authenticated) return;
+    try {
+      final profile = await _repo.getCurrentProfile();
+      if (profile == null || !mounted) return;
+      final riderApp = profile.role == UserRole.rider
+          ? await _repo.getRiderApplication(profile.id)
+          : state.riderApplication;
+      if (!mounted) return;
+      state = state.copyWith(profile: profile, riderApplication: riderApp);
+    } catch (e, s) {
+      AppLog.warn('profile sync on resume failed', e, s);
+    }
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    _lifecycle?.dispose();
+    _stopProfileSync();
+    super.dispose();
   }
 
   Future<void> refreshProfile() async {
@@ -127,6 +199,7 @@ class AuthNotifier extends StateNotifier<AppAuthState> {
         profile: profile,
         riderApplication: riderApp,
       );
+      _startProfileSync(profile.id);
     } catch (e) {
       state = AppAuthState(
         status: AuthStatus.unauthenticated,
