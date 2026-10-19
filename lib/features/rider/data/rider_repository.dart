@@ -305,7 +305,7 @@ class RiderRepository {
 
   /// Uploads a proof-of-delivery photo to `delivery-proof/<riderId>/…` (the
   /// only folder the storage policy lets this rider write). Returns the public
-  /// URL; [completeDelivery] records it on the booking.
+  /// URL; [saveDeliveryProof] records it on the booking.
   Future<String> uploadDeliveryProof({
     required String riderId,
     required BookingBase booking,
@@ -322,15 +322,13 @@ class RiderRepository {
     return _supabase.storage.from('delivery-proof').getPublicUrl(path);
   }
 
-  /// Completes a food/parcel/hauling drop-off, saving the proof photo in the
-  /// same row update. Saving the photo first as its own update refreshed the
-  /// trip card mid-way, and the app could stop before "completed" was ever
-  /// sent — leaving the delivery stuck "ongoing" with its photo saved.
-  Future<void> completeDelivery(BookingBase booking, {String? proofUrl}) async {
-    await _supabase.from(booking.kind.tableName).update({
-      'status': 'completed',
-      if (proofUrl != null) 'delivery_proof_url': proofUrl,
-    }).eq('id', booking.id);
+  /// Records the proof-of-delivery photo on a food/parcel/hauling booking.
+  /// It's its own step: "Mark complete" unlocks once it's saved (and the
+  /// database refuses to complete a delivery without it — web sql/031).
+  Future<void> saveDeliveryProof(BookingBase booking, String url) async {
+    await _supabase
+        .from(booking.kind.tableName)
+        .update({'delivery_proof_url': url}).eq('id', booking.id);
   }
 
   /// Confirms the real fare of a food/parcel job via the `finalize-fare`

@@ -252,34 +252,36 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
       return;
     }
 
-    // Food/parcel drop-off gets a proof-of-delivery photo (web: completeWithProof).
+    // Food/parcel/hauling: the proof-of-delivery photo is its own step and
+    // must be saved first (web: takeDeliveryProof; enforced by sql/031).
+    if (!_hasProof) {
+      _toast('Take a proof of delivery photo first.', color: AppColors.danger);
+      return;
+    }
+    await _run(() => repo.updateStatus(booking, 'completed', riderId: riderId),
+        success: 'Delivery completed! Earnings updated.');
+  }
+
+  bool get _hasProof => (booking.deliveryProofUrl ?? '').isNotEmpty;
+
+  /// Takes the proof-of-delivery photo and saves it on the booking, which
+  /// unlocks "Mark Complete".
+  Future<void> _takeProof() async {
+    final riderId = ref.read(authNotifierProvider).profile!.id;
+    final repo = ref.read(riderRepositoryProvider);
     final photo = await _pickPhoto('Proof of delivery');
     if (photo == null || !mounted) return;
     final b = booking;
-    setState(() => _busy = true);
     _toast('Uploading photo…');
-    String? proofUrl;
-    try {
-      // Storage only — the booking row isn't touched until completeDelivery.
-      proofUrl = await repo.uploadDeliveryProof(
+    await _run(() async {
+      final url = await repo.uploadDeliveryProof(
         riderId: riderId,
         booking: b,
         bytes: await photo.readAsBytes(),
         fileName: photo.name,
       );
-    } catch (_) {
-      proofUrl = null;
-    }
-    if (mounted) setState(() => _busy = false);
-    if (proofUrl == null &&
-        (!mounted ||
-            !await _confirm('Upload failed', "Couldn't upload the photo. Mark this complete without one?",
-                'Complete anyway'))) {
-      return;
-    }
-    // Photo and status go in one update (completeDelivery).
-    await _run(() => repo.completeDelivery(b, proofUrl: proofUrl),
-        success: 'Delivery completed! Earnings updated.');
+      await repo.saveDeliveryProof(b, url);
+    }, success: 'Proof of delivery saved — you can now mark it complete.');
   }
 
   Future<void> _openNavigation() async {
@@ -303,6 +305,7 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
         : const AsyncValue<List<RideStop>>.data([]);
     final stops = stopsAsync.valueOrNull ?? const <RideStop>[];
     final canComplete = _isOngoing && !_needsFinalFare;
+    final needsProof = booking.kind != BookingKind.transport;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -421,6 +424,10 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
               icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
               label: const Text('Chat with customer'),
             ),
+            if (canComplete && needsProof) ...[
+              const SizedBox(height: 10),
+              _proofSection(),
+            ],
             const SizedBox(height: 10),
             Row(
               children: [
@@ -455,22 +462,74 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
                     text: _isOngoing ? 'Mark Complete' : 'Start Trip',
                     icon: _isOngoing ? Icons.task_alt_rounded : Icons.play_arrow_rounded,
                     isLoading: _busy,
-                    onPressed: _paymentBlocked || (_isOngoing && !canComplete)
+                    onPressed: _paymentBlocked || (_isOngoing && (!canComplete || (needsProof && !_hasProof)))
                         ? null
                         : (_isOngoing ? _complete : _start),
                   ),
                 ),
               ],
             ),
-            if (_isOngoing && !canComplete) ...[
+            if (_isOngoing && (!canComplete || (needsProof && !_hasProof))) ...[
               const SizedBox(height: 6),
               Center(
-                child: Text('Set the final fare before completing.',
+                child: Text(
+                    !canComplete
+                        ? 'Set the final fare before completing.'
+                        : 'Take a proof of delivery photo before completing.',
                     style: AppTypography.caption),
               ),
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// Step before "Mark Complete" on a drop-off: take the photo, or show the
+  /// saved one with a Retake option.
+  Widget _proofSection() {
+    final url = booking.deliveryProofUrl;
+    if (url == null || url.isEmpty) {
+      return OutlinedButton.icon(
+        onPressed: _busy ? null : _takeProof,
+        icon: const Icon(Icons.photo_camera_rounded, size: 18),
+        label: const Text('Take proof of delivery'),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.success.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.success.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.network(
+              url,
+              width: 44,
+              height: 44,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox(
+                width: 44,
+                height: 44,
+                child: Icon(Icons.image_rounded, color: AppColors.success),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text('Proof of delivery saved',
+                style: AppTypography.bodyBold.copyWith(color: AppColors.success)),
+          ),
+          TextButton.icon(
+            onPressed: _busy ? null : _takeProof,
+            icon: const Icon(Icons.cameraswitch_rounded, size: 16),
+            label: const Text('Retake'),
+          ),
+        ],
       ),
     );
   }
