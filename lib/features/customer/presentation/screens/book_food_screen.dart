@@ -418,7 +418,12 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
           ),
           child: Row(
             children: [
-              RestaurantLogoTile(imageUrl: r.imageUrl, bg: visual.bg, fg: visual.fg, icon: visual.icon),
+              RestaurantLogoTile(
+                  imageUrl: r.imageUrl,
+                  bg: visual.bg,
+                  fg: visual.fg,
+                  icon: visual.icon,
+                  initials: restaurantInitials(r.name)),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -489,13 +494,16 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
   }
 }
 
-/// Category-coloured square with an icon (or the restaurant's own image).
+/// The restaurant's own logo when one is uploaded; otherwise a name badge —
+/// its initials on the category colour with the category icon (web:
+/// restaurantLogoTile).
 class RestaurantLogoTile extends StatelessWidget {
   final String? imageUrl;
   final Color bg;
   final Color fg;
   final IconData icon;
   final double size;
+  final String? initials;
 
   const RestaurantLogoTile({
     super.key,
@@ -504,16 +512,54 @@ class RestaurantLogoTile extends StatelessWidget {
     required this.fg,
     required this.icon,
     this.size = 52,
+    this.initials,
   });
 
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(size * 0.28);
-    final fallback = Container(
+    final badge = size * 0.4;
+    final fallback = SizedBox(
       width: size,
       height: size,
-      decoration: BoxDecoration(color: bg, borderRadius: radius),
-      child: Icon(icon, color: fg, size: size * 0.46),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: size,
+            height: size,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: radius,
+              gradient: RadialGradient(
+                center: const Alignment(-0.4, -0.6),
+                radius: 1.1,
+                colors: [Color.lerp(bg, Colors.white, 0.45)!, bg],
+              ),
+            ),
+            child: initials == null
+                ? Icon(icon, color: fg, size: size * 0.46)
+                : Text(initials!,
+                    style: AppTypography.h3.copyWith(
+                        color: fg, fontSize: size * 0.34, fontWeight: FontWeight.w800, letterSpacing: 0.4)),
+          ),
+          if (initials != null)
+            Positioned(
+              right: -2,
+              bottom: -2,
+              child: Container(
+                width: badge,
+                height: badge,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: bg, width: 2),
+                ),
+                child: Icon(icon, size: badge * 0.55, color: fg),
+              ),
+            ),
+        ],
+      ),
     );
     if (imageUrl == null || imageUrl!.isEmpty) return fallback;
     return ClipRRect(

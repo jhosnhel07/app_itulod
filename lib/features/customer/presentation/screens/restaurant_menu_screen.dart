@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../shared/widgets/rise_in.dart';
+import '../../../../shared/widgets/sample_photo_tag.dart';
 import '../../../../shared/widgets/loading_skeleton.dart';
 import '../../../../shared/widgets/app_confirm_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -97,6 +98,34 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
+                // ── Category banner (sample photo) ──────────────────────
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: SizedBox(
+                    height: 140,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Image.network(
+                          restaurantCoverUrl(cats),
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(color: AppColors.primary50),
+                        ),
+                        const DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Color(0x00000000), Color(0x47000000)],
+                            ),
+                          ),
+                        ),
+                        const Positioned(top: 10, right: 10, child: SamplePhotoTag()),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 // ── Restaurant header ───────────────────────────────────
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -112,7 +141,12 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
                   child: Row(
                     children: [
                       RestaurantLogoTile(
-                          imageUrl: r.imageUrl, bg: visual.bg, fg: visual.fg, icon: visual.icon, size: 64),
+                          imageUrl: r.imageUrl,
+                          bg: visual.bg,
+                          fg: visual.fg,
+                          icon: visual.icon,
+                          size: 64,
+                          initials: restaurantInitials(r.name)),
                       const SizedBox(width: 14),
                       Expanded(
                         child: Column(
@@ -244,15 +278,21 @@ class _RestaurantMenuScreenState extends ConsumerState<RestaurantMenuScreen> {
       child: Row(
         children: [
           if (item.imageUrl != null && item.imageUrl!.startsWith('http')) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                item.imageUrl!,
-                width: 64,
-                height: 64,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-              ),
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    item.imageUrl!,
+                    width: 64,
+                    height: 64,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                ),
+                if (isSamplePhoto(item.imageUrl))
+                  const Positioned(right: 3, bottom: 3, child: SamplePhotoTag(small: true)),
+              ],
             ),
             const SizedBox(width: 12),
           ],

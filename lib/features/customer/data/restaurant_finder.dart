@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../core/constants/map_config.dart';
 import '../../../shared/models/restaurant_models.dart';
@@ -143,3 +144,40 @@ String restaurantDisplayName(RestaurantModel r, String town) {
 /// Seeded menus for places without a published menu end their descriptions
 /// with this note (sql/021) — shown as a "Typical" badge instead.
 const String typicalItemNote = ' · typical item, availability may vary';
+
+// ── Pictures: name badges, cover photos, sample photos ──────────────────
+
+const _monoSkip = {'the', 'of', 'and', 'ni', 'ang', 'sa', 'de', 'la', 'restaurant', 'resto', 'cafe', 'café', 'eatery', 'food', 'house'};
+
+/// Up to two initials for a restaurant's name badge (shown when it has no
+/// logo) — same rule as the web's restaurantInitials().
+String restaurantInitials(String name) {
+  final words = name
+      .replaceAll(RegExp(r'\(.*?\)'), ' ')
+      .replaceAll(RegExp("['’]"), '') // "Herbie's" stays one word
+      .split(RegExp(r'[^A-Za-z0-9ÑñÉé]+'))
+      .where((w) => w.isNotEmpty)
+      .toList();
+  final main = words.where((w) => !_monoSkip.contains(w.toLowerCase())).toList();
+  final pick = (main.isNotEmpty ? main : words).take(2);
+  final s = pick.map((w) => w[0].toUpperCase()).join();
+  return s.isEmpty ? '?' : s;
+}
+
+/// Sample dish photos (CC0 / public domain) in the catalog-images bucket
+/// (web sql/027, sql/028, STOCK_PHOTOS.md).
+String get _stockBase =>
+    '${(dotenv.env['SUPABASE_URL'] ?? '').replaceAll(RegExp(r'/+$'), '')}/storage/v1/object/public/catalog-images/stock/';
+
+bool isSamplePhoto(String? url) => url != null && url.contains('/catalog-images/stock/');
+
+const _categoryCover = {
+  'fastfood': 'burger', 'ilocano': 'longganisa', 'empanada': 'empanada', 'coffee': 'coffee', 'bakery': 'bread',
+  'pizza': 'pizza', 'chicken': 'fried-chicken', 'asian': 'sushi', 'chinese': 'dumplings', 'grill': 'bbq', 'meals': 'rice-meal',
+};
+
+/// Banner photo for a restaurant's menu page: a sample photo of its category.
+String restaurantCoverUrl(Set<String> cats) {
+  final first = foodCategories.where((c) => cats.contains(c.id)).map((c) => c.id).firstOrNull;
+  return '$_stockBase${_categoryCover[first] ?? 'rice-meal'}.jpg';
+}
