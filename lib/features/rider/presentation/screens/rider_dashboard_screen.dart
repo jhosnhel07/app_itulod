@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show RealtimeChannel, PostgresChangeEvent, PostgresChangeFilter, PostgresChangeFilterType;
+import '../../../../core/supabase/supabase_client.dart';
 import '../../../../shared/widgets/liquid_glass_nav_bar.dart';
 import '../../../../shared/widgets/theme_toggle_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,12 +23,13 @@ import '../../data/rider_location_broadcaster.dart';
 import '../../data/rider_repository.dart';
 
 final riderOnlineStatusProvider = StateNotifierProvider<RiderOnlineNotifier, AsyncValue<bool>>((ref) {
-  final profile = ref.watch(authNotifierProvider).profile;
-  if (profile == null) return RiderOnlineNotifier(null, null, null);
+  // Only the id matters — profile edits (synced live) must not rebuild this.
+  final riderId = ref.watch(authNotifierProvider.select((s) => s.profile?.id));
+  if (riderId == null) return RiderOnlineNotifier(null, null, null);
   return RiderOnlineNotifier(
     ref.read(riderRepositoryProvider),
     ref.read(riderLocationBroadcasterProvider),
-    profile.id,
+    riderId,
   );
 });
 
@@ -42,21 +46,94 @@ class RiderOnlineNotifier extends StateNotifier<AsyncValue<bool>> {
     _load();
   }
 
+  /// Online status is shared with the web (rider_locations.is_online). Only
+  /// the device where the rider tapped Online sends GPS; this remembers
+  /// whether that was this phone, so a restart resumes sending only here and
+  /// the web's location isn't fought by a second one (web: onlineHere()).
+  static const _onlineHereKey = 'itulod-online-here';
+  RealtimeChannel? _channel;
+
+  Future<bool> _isOnlineHere(String riderId) async {
+    try {
+      return (await SharedPreferences.getInstance()).getString(_onlineHereKey) == riderId;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _setOnlineHere(String riderId, bool here) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (here) {
+        await prefs.setString(_onlineHereKey, riderId);
+      } else {
+        await prefs.remove(_onlineHereKey);
+      }
+    } catch (_) {/* best effort */}
+  }
+
   Future<void> _load() async {
     final repo = _repo, broadcaster = _broadcaster, riderId = _riderId;
     if (repo == null || broadcaster == null || riderId == null) {
       state = const AsyncValue.data(false);
       return;
     }
+    _watch(riderId);
     final wasOnline = await repo.fetchOnlineStatus(riderId);
     if (!wasOnline) {
-      state = const AsyncValue.data(false);
+      await _setOnlineHere(riderId, false);
+      if (mounted) state = const AsyncValue.data(false);
+      return;
+    }
+    if (!await _isOnlineHere(riderId)) {
+      // Online from the web: show it, but let that device keep sending GPS.
+      if (mounted) state = const AsyncValue.data(true);
       return;
     }
     // Resume broadcasting after an app restart, like the web on reload.
     final problem = await broadcaster.goOnline(riderId);
-    if (problem != null) await broadcaster.goOffline(riderId);
+    if (problem != null) {
+      await broadcaster.goOffline(riderId);
+      await _setOnlineHere(riderId, false);
+    }
     if (mounted) state = AsyncValue.data(problem == null);
+  }
+
+  /// Follow online/offline changes made on the web (or another phone) live.
+  void _watch(String riderId) {
+    if (_channel != null) return;
+    _channel = SupabaseConfig.client
+        .channel('rider-online-$riderId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'rider_locations',
+          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'rider_id', value: riderId),
+          callback: (payload) async {
+            final bool online;
+            if (payload.eventType == PostgresChangeEvent.delete) {
+              online = await _repo?.fetchOnlineStatus(riderId) ?? false;
+            } else {
+              online = payload.newRecord['is_online'] == true;
+            }
+            if (!mounted || state.valueOrNull == online) return;
+            if (!online) {
+              // Went offline elsewhere: stop sending from here without writing.
+              _broadcaster?.stopPresenceLocally();
+              await _setOnlineHere(riderId, false);
+            }
+            if (mounted) state = AsyncValue.data(online);
+          },
+        )
+        .subscribe();
+  }
+
+  @override
+  void dispose() {
+    final channel = _channel;
+    _channel = null;
+    if (channel != null) SupabaseConfig.client.removeChannel(channel);
+    super.dispose();
   }
 
   /// Returns a user-facing error when going online failed.
@@ -65,12 +142,17 @@ class RiderOnlineNotifier extends StateNotifier<AsyncValue<bool>> {
     if (broadcaster == null || riderId == null) return null;
     if (!isOnline) {
       state = const AsyncValue.data(false);
+      await _setOnlineHere(riderId, false);
       await broadcaster.goOffline(riderId);
       return null;
     }
     state = const AsyncValue.data(true);
+    await _setOnlineHere(riderId, true);
     final problem = await broadcaster.goOnline(riderId);
-    if (problem != null && mounted) state = const AsyncValue.data(false);
+    if (problem != null) {
+      await _setOnlineHere(riderId, false);
+      if (mounted) state = const AsyncValue.data(false);
+    }
     return problem;
   }
 }

@@ -46,6 +46,14 @@ class RiderLocationBroadcaster {
     return null;
   }
 
+  /// Stops sending presence from this device without marking the rider
+  /// offline — used when the rider went offline on another device (the web),
+  /// which already wrote is_online = false.
+  void stopPresenceLocally() {
+    _online = false;
+    _stopIfIdle();
+  }
+
   Future<void> goOffline(String riderId) async {
     _online = false;
     try {
@@ -72,17 +80,14 @@ class RiderLocationBroadcaster {
     }
 
     if (hadJob) {
-      // Trip over: drop the booking tag. Offline riders lose the row
-      // entirely, matching the web's stopLocationBroadcast().
+      // Trip over: drop the booking tag but keep the row (web:
+      // stopLocationBroadcast). Deleting it also wiped is_online, which —
+      // with online status synced to the web — switched an online rider off.
       try {
-        if (_online) {
-          await _db
-              .from('rider_locations')
-              .update({'booking_type': null, 'booking_id': null})
-              .eq('rider_id', riderId);
-        } else {
-          await _db.from('rider_locations').delete().eq('rider_id', riderId);
-        }
+        await _db
+            .from('rider_locations')
+            .update({'booking_type': null, 'booking_id': null})
+            .eq('rider_id', riderId);
       } catch (e, s) {
         AppLog.warn('clearing job location failed', e, s);
       }
@@ -130,7 +135,9 @@ class RiderLocationBroadcaster {
         'heading': p.heading.isFinite && p.heading >= 0
             ? double.parse(p.heading.toStringAsFixed(1))
             : null,
-        'is_online': _online,
+        // Only the device that went online claims it; trip tracking from a
+        // phone that didn't must not switch off a rider who's online on the web.
+        if (_online) 'is_online': true,
         'booking_type': job?.kind.name,
         'booking_id': job?.id,
         'updated_at': now.toUtc().toIso8601String(),
