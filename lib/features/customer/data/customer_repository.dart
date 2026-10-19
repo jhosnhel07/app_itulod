@@ -77,6 +77,13 @@ class PromoPreview {
 
 /// Snapshot shown on the customer home tab — lifetime stats plus whatever
 /// booking is currently in flight. Mirrors the web dashboard's "home" view.
+/// One online rider on the customer's "riders near you" map.
+class NearbyRider {
+  final LatLng point;
+  final String? vehicleType;
+  const NearbyRider(this.point, this.vehicleType);
+}
+
 class CustomerHomeSummary {
   final int completedTrips;
   final double totalSpent;
@@ -515,11 +522,14 @@ class CustomerRepository {
 
   /// Online, approved, idle riders with coarse (~110 m) coordinates — the
   /// only way rider positions reach a customer before booking (sql/017).
-  Future<List<LatLng>> fetchNearbyRiders() async {
+  Future<List<NearbyRider>> fetchNearbyRiders() async {
     final rows = await _supabase.rpc('get_nearby_riders');
     return [
       for (final r in (rows as List))
-        LatLng((r['lat'] as num).toDouble(), (r['lng'] as num).toDouble()),
+        NearbyRider(
+          LatLng((r['lat'] as num).toDouble(), (r['lng'] as num).toDouble()),
+          r['vehicle_type'] as String?,
+        ),
     ];
   }
 

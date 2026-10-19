@@ -17,6 +17,7 @@ import '../providers/cart_provider.dart';
 import '../providers/saved_addresses_provider.dart';
 import '../widgets/location_picker_field.dart';
 import '../widgets/payment_method_selector.dart';
+import '../widgets/riders_near_you_map.dart';
 import 'map_picker_screen.dart';
 
 /// Checkout for a cart-based food order — mirrors the web's food form
@@ -245,6 +246,13 @@ class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
                     const SizedBox(height: 20),
                     Text('Delivery details', style: AppTypography.h3),
                     const SizedBox(height: 8),
+                    RidersNearYouMap(
+                      vehicleName: _vehicle?.name,
+                      origin: _restaurantPoint,
+                      originLabel: 'the restaurant',
+                      noOriginHint: null,
+                    ),
+                    const SizedBox(height: 14),
                     LocationPickerField(
                       controller: _addressController,
                       hint: 'Tap to set your delivery address',

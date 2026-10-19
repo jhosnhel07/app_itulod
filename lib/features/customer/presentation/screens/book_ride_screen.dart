@@ -284,7 +284,7 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const RidersNearYouMap(),
+                  RidersNearYouMap(vehicleName: _vehicle?.name, origin: _pickupPoint),
                   const SizedBox(height: 16),
                   Card(
                     child: Padding(

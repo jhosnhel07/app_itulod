@@ -15,6 +15,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/customer_repository.dart';
 import '../widgets/location_picker_field.dart';
 import '../widgets/payment_method_selector.dart';
+import '../widgets/riders_near_you_map.dart';
 import '../widgets/route_preview_map.dart';
 import 'map_picker_screen.dart';
 
@@ -242,6 +243,8 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  RidersNearYouMap(vehicleName: _vehicle?.name, origin: _senderPoint),
+                  const SizedBox(height: 16),
                   _SectionCard(
                     title: 'Sender',
                     children: [
