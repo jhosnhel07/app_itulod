@@ -15,6 +15,10 @@ class RegisterStepIndicator extends StatelessWidget {
 
   static const labels = ['Role', 'Personal', 'Vehicle', 'Documents', 'Review'];
 
+  /// Vehicle / Documents / Review are rider-only — a customer's progress is
+  /// just Role → Personal (web: updateStepIndicator in js/register.js).
+  int get _count => isRider ? labels.length : 2;
+
   /// Progress accent follows the chosen role: iTULOD blue for a customer
   /// sign-up, warm rose for a rider application.
   static const Color _customerAccent = Color(0xFF2196F3);
@@ -26,91 +30,85 @@ class RegisterStepIndicator extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 28),
       child: Row(
-        children: List.generate(labels.length, (i) {
+        children: List.generate(_count, (i) {
           final completed = i < activeIndex;
           final active = i == activeIndex;
-          final faded = !isRider && i >= 2 && activeIndex < 4;
 
           return Expanded(
-            child: Opacity(
-              opacity: faded ? 0.3 : 1,
-              child: Column(
-                children: [
-                  SizedBox(
-                    height: 40,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        if (i < labels.length - 1)
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: FractionallySizedBox(
-                              widthFactor: 1,
-                              child: Container(
-                                margin: const EdgeInsets.only(left: 18),
-                                height: 2,
-                                color: completed
-                                    ? _accent
-                                    : active
-                                        ? _accent.withValues(alpha: 0.45)
-                                        : const Color(0xFFE5E7EB),
-                              ),
-                            ),
-                          ),
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: completed
-                                ? _accent
-                                : active
-                                    ? _accent
-                                    : Colors.white,
-                            border: Border.all(
-                              color: completed || active
+            child: Column(
+              children: [
+                SizedBox(
+                  height: 40,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      if (i < _count - 1)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: FractionallySizedBox(
+                            widthFactor: 1,
+                            child: Container(
+                              margin: const EdgeInsets.only(left: 18),
+                              height: 2,
+                              color: completed
                                   ? _accent
-                                  : const Color(0xFFE5E7EB),
-                              width: 2,
+                                  : active
+                                      ? _accent.withValues(alpha: 0.45)
+                                      : const Color(0xFFE5E7EB),
                             ),
-                            boxShadow: active
-                                ? [
-                                    BoxShadow(
-                                      color: _accent.withValues(alpha: 0.15),
-                                      blurRadius: 0,
-                                      spreadRadius: 4,
-                                    ),
-                                  ]
-                                : null,
                           ),
-                          alignment: Alignment.center,
-                          child: completed
-                              ? const FaIcon(FontAwesomeIcons.check, size: 12, color: Colors.white)
-                              : Text(
-                                  '${i + 1}',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: active ? Colors.white : AppColors.iconMuted,
-                                  ),
-                                ),
                         ),
-                      ],
-                    ),
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: completed
+                              ? _accent
+                              : active
+                                  ? _accent
+                                  : Colors.white,
+                          border: Border.all(
+                            color: completed || active ? _accent : const Color(0xFFE5E7EB),
+                            width: 2,
+                          ),
+                          boxShadow: active
+                              ? [
+                                  BoxShadow(
+                                    color: _accent.withValues(alpha: 0.15),
+                                    blurRadius: 0,
+                                    spreadRadius: 4,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        alignment: Alignment.center,
+                        child: completed
+                            ? const FaIcon(FontAwesomeIcons.check, size: 12, color: Colors.white)
+                            : Text(
+                                '${i + 1}',
+                                style: GoogleFonts.inter(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: active ? Colors.white : AppColors.iconMuted,
+                                ),
+                              ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    labels[i],
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.inter(
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.3,
-                      color: completed || active ? _accent : AppColors.iconMuted,
-                    ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  labels[i],
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.3,
+                    color: completed || active ? _accent : AppColors.iconMuted,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           );
         }),
