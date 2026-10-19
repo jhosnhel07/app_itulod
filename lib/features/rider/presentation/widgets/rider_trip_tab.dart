@@ -116,13 +116,6 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
     super.dispose();
   }
 
-  void _refreshAll() {
-    ref.invalidate(riderActiveBookingsProvider);
-    ref.invalidate(riderRequestsProvider);
-    ref.invalidate(riderHomeSnapshotProvider);
-    ref.invalidate(riderEarningsProvider);
-  }
-
   void _toast(String message, {Color? color}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -143,14 +136,25 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
     );
   }
 
+  /// Runs [action] even if this card is rebuilt meanwhile (a live update can
+  /// replace it): the providers and the messenger are captured up front, so
+  /// the list still refreshes and the result is still shown.
   Future<void> _run(Future<void> Function() action, {String? success}) async {
-    setState(() => _busy = true);
+    final container = ProviderScope.containerOf(context, listen: false);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    void show(String message, Color color) =>
+        messenger?.showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
+    if (mounted) setState(() => _busy = true);
     try {
       await action();
-      _refreshAll();
-      if (success != null) _toast(success, color: AppColors.success);
+      container
+        ..invalidate(riderActiveBookingsProvider)
+        ..invalidate(riderRequestsProvider)
+        ..invalidate(riderHomeSnapshotProvider)
+        ..invalidate(riderEarningsProvider);
+      if (success != null) show(success, AppColors.success);
     } catch (e) {
-      _toast(_clean(e), color: AppColors.danger);
+      show(_clean(e), AppColors.danger);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -250,28 +254,31 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
 
     // Food/parcel drop-off gets a proof-of-delivery photo (web: completeWithProof).
     final photo = await _pickPhoto('Proof of delivery');
-    if (photo == null) return;
+    if (photo == null || !mounted) return;
+    final b = booking;
     setState(() => _busy = true);
-    var uploaded = true;
+    _toast('Uploading photo…');
+    String? proofUrl;
     try {
-      _toast('Uploading photo…');
-      await repo.uploadDeliveryProof(
+      // Storage only — the booking row isn't touched until completeDelivery.
+      proofUrl = await repo.uploadDeliveryProof(
         riderId: riderId,
-        booking: booking,
+        booking: b,
         bytes: await photo.readAsBytes(),
         fileName: photo.name,
       );
     } catch (_) {
-      uploaded = false;
+      proofUrl = null;
     }
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (!uploaded &&
-        !await _confirm('Upload failed', "Couldn't upload the photo. Mark this complete without one?",
-            'Complete anyway')) {
+    if (mounted) setState(() => _busy = false);
+    if (proofUrl == null &&
+        (!mounted ||
+            !await _confirm('Upload failed', "Couldn't upload the photo. Mark this complete without one?",
+                'Complete anyway'))) {
       return;
     }
-    await _run(() => repo.updateStatus(booking, 'completed', riderId: riderId),
+    // Photo and status go in one update (completeDelivery).
+    await _run(() => repo.completeDelivery(b, proofUrl: proofUrl),
         success: 'Delivery completed! Earnings updated.');
   }
 
