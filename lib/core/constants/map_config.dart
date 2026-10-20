@@ -1,3 +1,4 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:latlong2/latlong.dart';
 
 /// Every knob the map feature turns, in one place.
@@ -5,6 +6,25 @@ class MapConfig {
   MapConfig._();
 
   // ── Tiles ─────────────────────────────────────────────────────────────
+
+  /// Public Mapbox token (MAPBOX_TOKEN in .env — the same pk.… token the web
+  /// app uses in js/map.js). With it, every map uses the web's Mapbox style;
+  /// without it (e.g. widget tests) the maps fall back to the Esri tiles below.
+  static String? get mapboxToken {
+    if (!dotenv.isInitialized) return null;
+    final token = dotenv.env['MAPBOX_TOKEN']?.trim();
+    return (token == null || token.isEmpty) ? null : token;
+  }
+
+  /// Mapbox "Satellite Streets" — the web's STYLE
+  /// (mapbox://styles/mapbox/satellite-streets-v12) served as raster tiles,
+  /// so the app's maps look the same as the web's. Roads and labels are
+  /// baked in, so no overlays are needed.
+  static const String mapboxTileUrl =
+      'https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token={accessToken}';
+
+  static const String mapboxAttribution = '© Mapbox © OpenStreetMap';
+  static const String mapboxFeedbackUrl = 'https://www.mapbox.com/map-feedback/';
 
   /// Esri "World Imagery" — global satellite / aerial photography. Free and
   /// key-free for light use; move to a paid imagery host (Esri, MapTiler,

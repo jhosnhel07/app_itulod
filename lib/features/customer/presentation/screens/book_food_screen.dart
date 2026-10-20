@@ -16,6 +16,7 @@ import '../../data/restaurant_finder.dart';
 import '../../data/restaurant_repository.dart';
 import '../providers/cart_provider.dart';
 import '../providers/saved_addresses_provider.dart';
+import '../../../../shared/widgets/map_widgets.dart';
 import 'map_picker_screen.dart';
 import 'restaurant_menu_screen.dart';
 
@@ -146,7 +147,7 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
       final picked = await MapPickerScreen.show(
         context,
         title: 'Deliver to',
-        pinColor: AppColors.danger,
+        pinColor: LocationDotPin.dropoff,
         initialCenter: current?.point,
         initialAddress: current?.address,
       );

@@ -149,14 +149,14 @@ class RoutePreviewMap extends StatelessWidget {
                       width: 34,
                       height: 34,
                       alignment: Alignment.topCenter,
-                      child: const MapPin(color: AppColors.success, size: 34),
+                      child: const LocationDotPin(color: LocationDotPin.pickup),
                     ),
                     Marker(
                       point: destination,
                       width: 34,
                       height: 34,
                       alignment: Alignment.topCenter,
-                      child: const MapPin(color: AppColors.danger, size: 34),
+                      child: const LocationDotPin(color: LocationDotPin.dropoff),
                     ),
                     for (var i = 0; i < stops.length; i++)
                       Marker(

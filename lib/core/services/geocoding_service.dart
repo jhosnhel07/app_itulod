@@ -52,8 +52,13 @@ class GeocodingService {
     return segments.take(parts).join(', ');
   }
 
-  /// The address at a coordinate, or null if Nominatim has nothing for it.
+  /// The address at a coordinate, or null if nothing has a name for it.
+  /// Mapbox first — the web's _reverseGeocode does the same, so a pin gets
+  /// the same address in both — then Nominatim.
   Future<String?> reverseGeocode(LatLng point) async {
+    final fromMapbox = await _mapboxReverse(point);
+    if (fromMapbox != null) return fromMapbox;
+
     final uri = Uri.parse('${MapConfig.nominatimBase}/reverse').replace(
       queryParameters: {
         'format': 'jsonv2',
@@ -73,6 +78,27 @@ class GeocodingService {
       return (name == null || name.isEmpty) ? null : name;
     } catch (e, s) {
       AppLog.warn('reverseGeocode: bad Nominatim response', e, s);
+      return null;
+    }
+  }
+
+  Future<String?> _mapboxReverse(LatLng point) async {
+    final token = MapConfig.mapboxToken;
+    if (token == null) return null;
+    final uri = Uri.parse(
+            'https://api.mapbox.com/geocoding/v5/mapbox.places/${point.longitude.toStringAsFixed(6)},${point.latitude.toStringAsFixed(6)}.json')
+        .replace(queryParameters: {'access_token': token, 'limit': '1'});
+    try {
+      final response = await _client.get(uri).timeout(MapConfig.networkTimeout);
+      if (response.statusCode != 200) return null;
+      final json = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      final features = json['features'] as List?;
+      final name = (features == null || features.isEmpty)
+          ? null
+          : (features.first as Map<String, dynamic>)['place_name'] as String?;
+      return (name == null || name.isEmpty) ? null : name;
+    } catch (e, s) {
+      AppLog.warn('Mapbox reverse geocode failed', e, s);
       return null;
     }
   }

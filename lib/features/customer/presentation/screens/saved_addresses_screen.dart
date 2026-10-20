@@ -144,7 +144,6 @@ class SavedAddressesScreen extends ConsumerWidget {
               final picked = await MapPickerScreen.show(
                 context,
                 title: 'Set Location',
-                pinColor: AppColors.primary,
               );
               if (picked == null || !context.mounted) return;
 

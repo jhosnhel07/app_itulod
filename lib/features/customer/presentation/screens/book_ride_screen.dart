@@ -94,73 +94,41 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
 
   // ── Location picking ──────────────────────────────────────────────────
 
+  /// Pickup and destination share the web-style map ("1 Set Pickup /
+  /// 2 Set Drop-off"); a stop gets a one-pin map.
   Future<void> _pickLocation({required bool isPickup, int? stopIndex}) async {
-    final title = isPickup ? 'Set pickup location' : (stopIndex != null ? 'Set stop ${stopIndex + 1}' : 'Set destination');
-    final initialCenter = isPickup ? _pickupPoint : (stopIndex != null ? _stopPoints[stopIndex] : _destinationPoint) ?? _pickupPoint;
-    final initialAddress = isPickup
-        ? _nullIfEmpty(_pickupController.text)
-        : (stopIndex != null ? _nullIfEmpty(_stopControllers[stopIndex].text) : _nullIfEmpty(_destinationController.text));
-
-    // Ask user to pick from saved addresses or map
-    final savedAddresses = ref.read(savedAddressesProvider).value ?? [];
-    PickedPlace? picked;
-
-    if (savedAddresses.isNotEmpty) {
-      picked = await showModalBottomSheet<PickedPlace>(
-        context: context,
-        builder: (ctx) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.map_rounded),
-                title: const Text('Choose on Map'),
-                onTap: () {
-                  Navigator.pop(ctx, const PickedPlace(address: '', point: LatLng(0,0))); // Sentinel value for map
-                },
-              ),
-              const Divider(),
-              for (final addr in savedAddresses)
-                ListTile(
-                  leading: const Icon(Icons.location_on_rounded),
-                  title: Text(addr.label),
-                  subtitle: Text(addr.address, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  onTap: () {
-                    Navigator.pop(ctx, PickedPlace(address: addr.address, point: addr.point));
-                  },
-                ),
-            ],
-          ),
-        ),
-      );
-    } else {
-      // Just map if no saved addresses
-      picked = const PickedPlace(address: '', point: LatLng(0,0));
-    }
-
-    if (picked == null) return;
-    if (picked.address.isEmpty) { // Sentinel value, open map
-      picked = await MapPickerScreen.show(
+    if (stopIndex != null) {
+      final picked = await MapPickerScreen.show(
         context,
-        title: title,
-        pinColor: isPickup ? AppColors.success : AppColors.danger,
-        initialCenter: initialCenter,
-        initialAddress: initialAddress,
+        title: 'Set stop ${stopIndex + 1}',
+        initialCenter: _stopPoints[stopIndex],
+        initialAddress: _nullIfEmpty(_stopControllers[stopIndex].text),
       );
-    }
-    
-    if (picked == null || !mounted) return;
-
-    setState(() {
-      if (isPickup) {
-        _pickupController.text = picked!.address;
-        _pickupPoint = picked.point;
-      } else if (stopIndex != null) {
-        _stopControllers[stopIndex].text = picked!.address;
+      if (picked == null || !mounted) return;
+      setState(() {
+        _stopControllers[stopIndex].text = picked.address;
         _stopPoints[stopIndex] = picked.point;
-      } else {
-        _destinationController.text = picked!.address;
-        _destinationPoint = picked.point;
+      });
+      _refreshRoute();
+      return;
+    }
+
+    final pickup = _pickupPoint, destination = _destinationPoint;
+    final result = await MapPickerScreen.showRoute(
+      context,
+      pickup: pickup == null ? null : PickedPlace(point: pickup, address: _pickupController.text),
+      dropoff: destination == null ? null : PickedPlace(point: destination, address: _destinationController.text),
+      startWith: isPickup ? PinMode.pickup : PinMode.dropoff,
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      if (result.pickup != null) {
+        _pickupController.text = result.pickup!.address;
+        _pickupPoint = result.pickup!.point;
+      }
+      if (result.dropoff != null) {
+        _destinationController.text = result.dropoff!.address;
+        _destinationPoint = result.dropoff!.point;
       }
     });
     _refreshRoute();

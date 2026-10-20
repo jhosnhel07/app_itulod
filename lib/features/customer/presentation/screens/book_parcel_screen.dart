@@ -116,25 +116,25 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
   static String? _nullIfEmpty(String value) =>
       value.trim().isEmpty ? null : value;
 
+  /// Sender and receiver share the web-style map ("1 Set Pickup /
+  /// 2 Set Drop-off").
   Future<void> _pickLocation({required bool isSender}) async {
-    final picked = await MapPickerScreen.show(
+    final s = _senderPoint, r = _receiverPoint;
+    final result = await MapPickerScreen.showRoute(
       context,
-      title: isSender ? 'Set pickup location' : 'Set drop-off location',
-      pinColor: isSender ? AppColors.success : AppColors.danger,
-      initialCenter: isSender ? _senderPoint : (_receiverPoint ?? _senderPoint),
-      initialAddress: isSender
-          ? _nullIfEmpty(_senderAddressController.text)
-          : _nullIfEmpty(_receiverAddressController.text),
+      pickup: s == null ? null : PickedPlace(point: s, address: _senderAddressController.text),
+      dropoff: r == null ? null : PickedPlace(point: r, address: _receiverAddressController.text),
+      startWith: isSender ? PinMode.pickup : PinMode.dropoff,
     );
-    if (picked == null || !mounted) return;
-
+    if (result == null || !mounted) return;
     setState(() {
-      if (isSender) {
-        _senderAddressController.text = picked.address;
-        _senderPoint = picked.point;
-      } else {
-        _receiverAddressController.text = picked.address;
-        _receiverPoint = picked.point;
+      if (result.pickup != null) {
+        _senderAddressController.text = result.pickup!.address;
+        _senderPoint = result.pickup!.point;
+      }
+      if (result.dropoff != null) {
+        _receiverAddressController.text = result.dropoff!.address;
+        _receiverPoint = result.dropoff!.point;
       }
     });
     _refreshRoute();

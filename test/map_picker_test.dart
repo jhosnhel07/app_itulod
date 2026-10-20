@@ -12,6 +12,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:app_itulod/core/constants/map_config.dart';
 import 'package:app_itulod/core/services/geocoding_service.dart';
 import 'package:app_itulod/core/services/location_service.dart';
+import 'package:app_itulod/core/services/route_service.dart';
 import 'package:app_itulod/core/theme/app_theme.dart';
 import 'package:app_itulod/features/customer/presentation/screens/map_picker_screen.dart';
 import 'package:app_itulod/features/customer/presentation/widgets/route_preview_map.dart';
@@ -117,33 +118,19 @@ void main() {
   }
 
   group('MapPickerScreen', () {
-    testWidgets('lays out with the app theme and shows the OSM attribution',
-        (tester) async {
-      await pumpPhone(
-        tester,
-        MapPickerScreen(
-          title: 'Set pickup location',
-          initialCenter: _laoag,
-          initialAddress: 'Colon Street, Cebu City',
-          autoLocate: false,
-          tileProvider: _FakeTileProvider(),
-        ),
-      );
+    /// Routing is never reachable in tests — the picker falls back to a
+    /// straight line, which is all these tests need.
+    final noRouting = routeServiceProvider.overrideWithValue(
+      RouteService(client: MockClient((_) async => http.Response('down', 503))),
+    );
 
-      expect(tester.takeException(), isNull);
-      expect(find.text('Set pickup location'), findsOneWidget);
-      expect(find.text('Colon Street, Cebu City'), findsOneWidget);
-      expect(find.text('Confirm location'), findsOneWidget);
-      expect(find.byType(FlutterMap), findsOneWidget);
-
-      // Displaying this is a condition of the OSM tile licence.
-      expect(find.text(MapConfig.attribution), findsOneWidget);
-    });
-
-    testWidgets('Confirm returns the pin coordinates and the address',
-        (tester) async {
-      PickedPlace? result;
-
+    /// Opens [screen] from a button and returns whatever it pops.
+    Future<T? Function()> openFromButton<T>(
+      WidgetTester tester,
+      Widget screen, {
+      List<Override> overrides = const [],
+    }) async {
+      T? result;
       await pumpPhone(
         tester,
         Builder(
@@ -151,16 +138,8 @@ void main() {
             body: Center(
               child: ElevatedButton(
                 onPressed: () async {
-                  result = await Navigator.of(context).push<PickedPlace>(
-                    MaterialPageRoute(
-                      builder: (_) => MapPickerScreen(
-                        title: 'Set destination',
-                        initialCenter: _laoag,
-                        initialAddress: 'SM City Cebu',
-                        autoLocate: false,
-                        tileProvider: _FakeTileProvider(),
-                      ),
-                    ),
+                  result = await Navigator.of(context).push<T>(
+                    MaterialPageRoute(builder: (_) => screen),
                   );
                 },
                 child: const Text('open'),
@@ -168,19 +147,61 @@ void main() {
             ),
           ),
         ),
+        overrides: [noRouting, ...overrides],
       );
-
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
+      return () => result;
+    }
+
+    Offset mapCentre(WidgetTester tester) => tester.getCenter(find.byType(FlutterMap));
+
+    testWidgets('lays out with the app theme and shows the map attribution',
+        (tester) async {
+      await pumpPhone(
+        tester,
+        MapPickerScreen(
+          title: 'Set pickup location',
+          initialCenter: _laoag,
+          initialAddress: 'Rizal Street, Laoag City',
+          autoLocate: false,
+          tileProvider: _FakeTileProvider(),
+        ),
+        overrides: [noRouting],
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Set pickup location'), findsOneWidget);
+      expect(find.text('Rizal Street, Laoag City'), findsOneWidget);
+      expect(find.text('Tap on the map to set the location.'), findsOneWidget);
+      expect(find.text('Done'), findsOneWidget);
+      expect(find.byType(FlutterMap), findsOneWidget);
+
+      // Displaying this is a condition of the tile licence. (No MAPBOX_TOKEN
+      // in tests, so the Esri fallback is what's shown.)
+      expect(find.text(MapConfig.attribution), findsOneWidget);
+    });
+
+    testWidgets('Done returns the opening pin and its address', (tester) async {
+      final result = await openFromButton<PickedPlace>(
+        tester,
+        MapPickerScreen(
+          title: 'Set destination',
+          initialCenter: _laoag,
+          initialAddress: 'Laoag City Hall',
+          autoLocate: false,
+          tileProvider: _FakeTileProvider(),
+        ),
+      );
       expect(find.text('Set destination'), findsOneWidget);
 
-      await tester.tap(find.text('Confirm location'));
+      await tester.tap(find.text('Done'));
       await tester.pumpAndSettle();
 
-      expect(result, isNotNull);
-      expect(result!.address, 'SM City Cebu');
-      expect(result!.point.latitude, closeTo(_laoag.latitude, 0.0001));
-      expect(result!.point.longitude, closeTo(_laoag.longitude, 0.0001));
+      expect(result(), isNotNull);
+      expect(result()!.address, 'Laoag City Hall');
+      expect(result()!.point.latitude, closeTo(_laoag.latitude, 0.0001));
+      expect(result()!.point.longitude, closeTo(_laoag.longitude, 0.0001));
     });
 
     testWidgets('reverse-geocodes the opening pin into a short address',
@@ -194,13 +215,10 @@ void main() {
           tileProvider: _FakeTileProvider(),
         ),
         overrides: [
-          geocodingServiceProvider.overrideWithValue(
-            GeocodingService(client: _fakeGeocoder()),
-          ),
+          noRouting,
+          geocodingServiceProvider.overrideWithValue(GeocodingService(client: _fakeGeocoder())),
         ],
       );
-
-      // The post-frame lookup has to resolve before the label updates.
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
@@ -208,10 +226,9 @@ void main() {
       expect(find.text('Finding address…'), findsNothing);
     });
 
-    testWidgets('falls back to coordinates when Nominatim has no name',
+    testWidgets('falls back to coordinates when nothing has a name',
         (tester) async {
       final emptyGeocoder = MockClient((_) async => http.Response('{}', 200));
-
       await pumpPhone(
         tester,
         MapPickerScreen(
@@ -221,9 +238,8 @@ void main() {
           tileProvider: _FakeTileProvider(),
         ),
         overrides: [
-          geocodingServiceProvider.overrideWithValue(
-            GeocodingService(client: emptyGeocoder),
-          ),
+          noRouting,
+          geocodingServiceProvider.overrideWithValue(GeocodingService(client: emptyGeocoder)),
         ],
       );
       await tester.pumpAndSettle();
@@ -233,79 +249,164 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('a search result moves the pin and fills the address',        (tester) async {
+    testWidgets('tapping the map drops the pin there (web: click to set)',
+        (tester) async {
+      final result = await openFromButton<PickedPlace>(
+        tester,
+        MapPickerScreen(title: 'Set Location', autoLocate: false, tileProvider: _FakeTileProvider()),
+        overrides: [
+          geocodingServiceProvider.overrideWithValue(GeocodingService(client: _fakeGeocoder())),
+        ],
+      );
+
+      // Nothing pinned yet: Done is disabled.
+      expect(find.text('Tap the map to set'), findsOneWidget);
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+      expect(result(), isNull);
+
+      await tester.tapAt(mapCentre(tester));
+      // flutter_map holds a tap briefly in case it is a double-tap (zoom).
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      expect(find.text('Colon Street, Parian, Cebu City, Cebu'), findsOneWidget);
+
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+
+      // The map opens on Laoag, so a tap in its middle pins Laoag.
+      expect(result(), isNotNull);
+      expect(result()!.point.latitude, closeTo(MapConfig.defaultCenter.latitude, 0.01));
+      expect(result()!.point.longitude, closeTo(MapConfig.defaultCenter.longitude, 0.01));
+      expect(result()!.address, 'Colon Street, Parian, Cebu City, Cebu');
+    });
+
+    testWidgets('a search result drops the pin and fills the address',
+        (tester) async {
       final geocoder = _fakeGeocoder(searchRows: [
         {
           'lat': '18.1781',
           'lon': '120.5317',
-          'display_name': 'Ayala Center Cebu, Cebu Business Park, Cebu City, Cebu',
+          'display_name': 'Fort Ilocandia, Calayab, Laoag City, Ilocos Norte',
         },
       ]);
-
-      PickedPlace? result;
-      await pumpPhone(
+      final result = await openFromButton<PickedPlace>(
         tester,
-        Builder(
-          builder: (context) => Scaffold(
-            body: Center(
-              child: ElevatedButton(
-                onPressed: () async {
-                  result = await Navigator.of(context).push<PickedPlace>(
-                    MaterialPageRoute(
-                      builder: (_) => MapPickerScreen(
-                        title: 'Set destination',
-                        initialCenter: _laoag,
-                        initialAddress: 'Colon Street',
-                        autoLocate: false,
-                        tileProvider: _FakeTileProvider(),
-                      ),
-                    ),
-                  );
-                },
-                child: const Text('open'),
-              ),
-            ),
-          ),
+        MapPickerScreen(
+          title: 'Set destination',
+          initialCenter: _laoag,
+          initialAddress: 'Rizal Street',
+          autoLocate: false,
+          tileProvider: _FakeTileProvider(),
         ),
-        overrides: [
-          geocodingServiceProvider
-              .overrideWithValue(GeocodingService(client: geocoder)),
-        ],
+        overrides: [geocodingServiceProvider.overrideWithValue(GeocodingService(client: geocoder))],
       );
 
-      await tester.tap(find.text('open'));
+      await tester.tap(find.byTooltip('Search a place'));
       await tester.pumpAndSettle();
-
-      await tester.enterText(find.byType(TextField), 'Ayala');
+      await tester.enterText(find.byType(TextField), 'Fort');
       // 500 ms debounce, then the request.
       await tester.pump(const Duration(milliseconds: 600));
       await tester.pumpAndSettle();
 
-      final option =
-          find.text('Ayala Center Cebu, Cebu Business Park, Cebu City, Cebu');
+      final option = find.text('Fort Ilocandia, Calayab, Laoag City, Ilocos Norte');
       expect(option, findsOneWidget);
-
       await tester.tap(option);
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Confirm location'));
+      await tester.tap(find.text('Done'));
       await tester.pumpAndSettle();
 
-      expect(result, isNotNull);
-      expect(result!.address, 'Ayala Center Cebu, Cebu Business Park, Cebu City, Cebu');
-      expect(result!.point.latitude, closeTo(18.1781, 0.0001));
-      expect(result!.point.longitude, closeTo(120.5317, 0.0001));
+      expect(result(), isNotNull);
+      expect(result()!.address, 'Fort Ilocandia, Calayab, Laoag City, Ilocos Norte');
+      expect(result()!.point.latitude, closeTo(18.1781, 0.0001));
+      expect(result()!.point.longitude, closeTo(120.5317, 0.0001));
+    });
+
+    testWidgets('route mode: pickup, then it moves to drop-off by itself',
+        (tester) async {
+      final result = await openFromButton<PickedRoute>(
+        tester,
+        MapPickerScreen(
+          title: 'Set location on map',
+          routeMode: true,
+          autoLocate: false,
+          tileProvider: _FakeTileProvider(),
+        ),
+        overrides: [
+          geocodingServiceProvider.overrideWithValue(GeocodingService(client: _fakeGeocoder())),
+        ],
+      );
+
+      expect(find.text('Set Pickup'), findsOneWidget);
+      expect(find.text('Set Drop-off'), findsOneWidget);
+      expect(find.text('Tap on the map to set your pickup location.'), findsOneWidget);
+
+      await tester.tapAt(mapCentre(tester));
+      // flutter_map holds a tap briefly in case it is a double-tap (zoom).
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      // Web: setting the pickup switches the map to drop-off.
+      expect(find.text('Tap on the map to set your drop-off location.'), findsOneWidget);
+
+      await tester.tapAt(mapCentre(tester) + const Offset(80, 90));
+      // flutter_map holds a tap briefly in case it is a double-tap (zoom).
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+
+      final route = result();
+      expect(route, isNotNull);
+      expect(route!.pickup, isNotNull);
+      expect(route.dropoff, isNotNull);
+      expect(route.pickup!.point.latitude, closeTo(MapConfig.defaultCenter.latitude, 0.01));
+      expect(route.dropoff!.point.latitude, lessThan(route.pickup!.point.latitude),
+          reason: 'the drop-off was tapped below the pickup');
+      expect(route.dropoff!.point.longitude, greaterThan(route.pickup!.point.longitude),
+          reason: 'the drop-off was tapped right of the pickup');
+    });
+
+    testWidgets('route mode opened on drop-off keeps the existing pickup',
+        (tester) async {
+      final result = await openFromButton<PickedRoute>(
+        tester,
+        MapPickerScreen(
+          title: 'Set location on map',
+          routeMode: true,
+          initialPickup: const PickedPlace(point: _laoag, address: 'Laoag City Hall'),
+          startMode: PinMode.dropoff,
+          autoLocate: false,
+          tileProvider: _FakeTileProvider(),
+        ),
+        overrides: [
+          geocodingServiceProvider.overrideWithValue(GeocodingService(client: _fakeGeocoder())),
+        ],
+      );
+      expect(find.text('Laoag City Hall'), findsOneWidget);
+      expect(find.text('Tap on the map to set your drop-off location.'), findsOneWidget);
+
+      await tester.tapAt(mapCentre(tester) + const Offset(-70, 60));
+      // flutter_map holds a tap briefly in case it is a double-tap (zoom).
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+
+      expect(result()!.pickup!.address, 'Laoag City Hall');
+      expect(result()!.pickup!.point.latitude, closeTo(_laoag.latitude, 0.0001));
+      expect(result()!.dropoff, isNotNull);
     });
 
     // Regression: the picker asks the device for a location when it opens, and
-    // a cold GPS fix can take many seconds. It used to move the map whenever
-    // that fix eventually landed — throwing away a spot the user had already
-    // dragged to in the meantime, without saying anything.
-    testWidgets('a late device fix does not override a spot the user dragged to',
+    // a cold GPS fix can take many seconds. When it lands it may centre the
+    // map, but never move a pin the user has already dropped.
+    testWidgets('a late device fix does not move a pin the user dropped',
         (tester) async {
-      const manila = LatLng(18.5636, 120.7875); // Pagudpud — far from Laoag
+      const pagudpud = LatLng(18.5636, 120.7875); // far from Laoag
       PickedPlace? result;
-
       await pumpPhone(
         tester,
         Builder(
@@ -315,10 +416,7 @@ void main() {
                 onPressed: () async {
                   result = await Navigator.of(context).push<PickedPlace>(
                     MaterialPageRoute(
-                      builder: (_) => MapPickerScreen(
-                        title: 'Set pickup location',
-                        tileProvider: _FakeTileProvider(),
-                      ),
+                      builder: (_) => MapPickerScreen(title: 'Set Location', tileProvider: _FakeTileProvider()),
                     ),
                   );
                 },
@@ -328,58 +426,40 @@ void main() {
           ),
         ),
         overrides: [
-          locationServiceProvider.overrideWithValue(
-            const _SlowLocationService(manila, Duration(seconds: 3)),
-          ),
-          geocodingServiceProvider.overrideWithValue(
-            GeocodingService(client: _fakeGeocoder()),
-          ),
+          noRouting,
+          locationServiceProvider.overrideWithValue(const _SlowLocationService(pagudpud, Duration(seconds: 3))),
+          geocodingServiceProvider.overrideWithValue(GeocodingService(client: _fakeGeocoder())),
         ],
       );
 
       await tester.tap(find.text('open'));
-      // Not pumpAndSettle: while the picker is locating, its progress spinners
-      // animate forever and settling would never return.
+      // Not pumpAndSettle: while locating, the spinner animates forever.
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
-      // The user picks their spot while the fix is still in flight. Driven as a
-      // slow gesture so flutter_map does not read it as a fling.
-      final gesture =
-          await tester.startGesture(tester.getCenter(find.byType(FlutterMap)));
-      await gesture.moveBy(const Offset(-40, -40));
-      await tester.pump(const Duration(milliseconds: 60));
-      await gesture.moveBy(const Offset(-40, -40));
-      await tester.pump(const Duration(milliseconds: 60));
-      await gesture.up();
-      await tester.pump(const Duration(milliseconds: 600));
+      // The user taps their spot while the fix is still in flight.
+      await tester.tapAt(mapCentre(tester));
+      // flutter_map holds a tap briefly in case it is a double-tap (zoom).
+      await tester.pump(const Duration(milliseconds: 500));
       await tester.pump();
 
       // Now the fix lands.
       await tester.pump(const Duration(seconds: 4));
-      await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      await tester.tap(find.text('Confirm location'));
+      await tester.tap(find.text('Done'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
       expect(result, isNotNull);
-      expect(
-        (result!.point.latitude - manila.latitude).abs(),
-        greaterThan(0.2),
-        reason: "the late fix moved the map away from the user's choice",
-      );
-      // The drag was a couple of hundred metres, so the pin stays near Laoag.
-      expect(result!.point.latitude, closeTo(_laoag.latitude, 0.1));
-      expect(result!.point.longitude, closeTo(_laoag.longitude, 0.1));
+      expect(result!.point.latitude, closeTo(MapConfig.defaultCenter.latitude, 0.05),
+          reason: "the late fix moved the user's pin");
     });
 
-    testWidgets('a device fix does centre the map when the user has not moved it',
+    testWidgets('a device fix centres the map when nothing was pinned yet',
         (tester) async {
-      const manila = LatLng(18.5636, 120.7875); // Pagudpud
+      const pagudpud = LatLng(18.5636, 120.7875);
       PickedPlace? result;
-
       await pumpPhone(
         tester,
         Builder(
@@ -389,10 +469,7 @@ void main() {
                 onPressed: () async {
                   result = await Navigator.of(context).push<PickedPlace>(
                     MaterialPageRoute(
-                      builder: (_) => MapPickerScreen(
-                        title: 'Set pickup location',
-                        tileProvider: _FakeTileProvider(),
-                      ),
+                      builder: (_) => MapPickerScreen(title: 'Set Location', tileProvider: _FakeTileProvider()),
                     ),
                   );
                 },
@@ -402,12 +479,9 @@ void main() {
           ),
         ),
         overrides: [
-          locationServiceProvider.overrideWithValue(
-            const _SlowLocationService(manila, Duration(seconds: 1)),
-          ),
-          geocodingServiceProvider.overrideWithValue(
-            GeocodingService(client: _fakeGeocoder()),
-          ),
+          noRouting,
+          locationServiceProvider.overrideWithValue(const _SlowLocationService(pagudpud, Duration(seconds: 1))),
+          geocodingServiceProvider.overrideWithValue(GeocodingService(client: _fakeGeocoder())),
         ],
       );
 
@@ -415,16 +489,20 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump(const Duration(seconds: 2));
-      await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      await tester.tap(find.text('Confirm location'));
+      // The map now sits on the device location; a tap in its middle pins it.
+      await tester.tapAt(mapCentre(tester));
+      // flutter_map holds a tap briefly in case it is a double-tap (zoom).
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+      await tester.tap(find.text('Done'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
       expect(result, isNotNull);
-      expect(result!.point.latitude, closeTo(manila.latitude, 0.01));
-      expect(result!.point.longitude, closeTo(manila.longitude, 0.01));
+      expect(result!.point.latitude, closeTo(pagudpud.latitude, 0.01));
+      expect(result!.point.longitude, closeTo(pagudpud.longitude, 0.01));
     });
   });
 

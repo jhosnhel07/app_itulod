@@ -18,6 +18,7 @@ import '../providers/saved_addresses_provider.dart';
 import '../widgets/location_picker_field.dart';
 import '../widgets/payment_method_selector.dart';
 import '../widgets/riders_near_you_map.dart';
+import '../../../../shared/widgets/map_widgets.dart';
 import 'map_picker_screen.dart';
 
 /// Checkout for a cart-based food order — mirrors the web's food form
@@ -101,8 +102,9 @@ class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
     final picked = await MapPickerScreen.show(
       context,
       title: 'Set delivery location',
-      pinColor: AppColors.danger,
+      pinColor: LocationDotPin.dropoff,
       initialCenter: _deliveryPoint,
+      fixedPoint: _restaurantPoint,
       initialAddress: _addressController.text.trim().isEmpty ? null : _addressController.text,
     );
     if (picked == null || !mounted) return;

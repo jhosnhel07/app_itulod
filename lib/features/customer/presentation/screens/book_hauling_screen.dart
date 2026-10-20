@@ -108,24 +108,25 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
 
   // ── Location ──────────────────────────────────────────────────────────
 
+  /// Pickup and drop-off share the web-style map ("1 Set Pickup /
+  /// 2 Set Drop-off").
   Future<void> _pickLocation({required bool isPickup}) async {
-    final picked = await MapPickerScreen.show(
+    final a = _pickupPoint, b = _dropoffPoint;
+    final result = await MapPickerScreen.showRoute(
       context,
-      title: isPickup ? 'Set pickup location' : 'Set drop-off location',
-      pinColor: isPickup ? AppColors.success : AppColors.danger,
-      initialCenter: isPickup ? _pickupPoint : (_dropoffPoint ?? _pickupPoint),
-      initialAddress: (isPickup ? _pickupAddress : _dropoffAddress).text.trim().isEmpty
-          ? null
-          : (isPickup ? _pickupAddress : _dropoffAddress).text,
+      pickup: a == null ? null : PickedPlace(point: a, address: _pickupAddress.text),
+      dropoff: b == null ? null : PickedPlace(point: b, address: _dropoffAddress.text),
+      startWith: isPickup ? PinMode.pickup : PinMode.dropoff,
     );
-    if (picked == null || !mounted) return;
+    if (result == null || !mounted) return;
     setState(() {
-      if (isPickup) {
-        _pickupAddress.text = picked.address;
-        _pickupPoint = picked.point;
-      } else {
-        _dropoffAddress.text = picked.address;
-        _dropoffPoint = picked.point;
+      if (result.pickup != null) {
+        _pickupAddress.text = result.pickup!.address;
+        _pickupPoint = result.pickup!.point;
+      }
+      if (result.dropoff != null) {
+        _dropoffAddress.text = result.dropoff!.address;
+        _dropoffPoint = result.dropoff!.point;
       }
     });
     _refreshRoute();
