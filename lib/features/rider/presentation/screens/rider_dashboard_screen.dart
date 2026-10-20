@@ -6,6 +6,7 @@ import '../../../../shared/widgets/liquid_glass_nav_bar.dart';
 import '../../../../shared/widgets/theme_toggle_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/constants/app_icons.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/supabase/realtime_refresh.dart';
 import '../../../../shared/models/rider_application_model.dart';
@@ -402,12 +403,12 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
           _navCompact = false;
         }),
         items: const [
-          LiquidNavItem(icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: 'Home'),
-          LiquidNavItem(icon: Icons.inbox_outlined, activeIcon: Icons.inbox_rounded, label: 'Requests'),
-          LiquidNavItem(icon: Icons.route_outlined, activeIcon: Icons.route_rounded, label: 'Trip'),
-          LiquidNavItem(icon: Icons.payments_outlined, activeIcon: Icons.payments_rounded, label: 'Earnings'),
-          LiquidNavItem(icon: Icons.history_outlined, activeIcon: Icons.history_rounded, label: 'History'),
-          LiquidNavItem(icon: Icons.person_outline, activeIcon: Icons.person_rounded, label: 'Profile'),
+          LiquidNavItem(icon: AppIcons.home, activeIcon: AppIcons.homeActive, label: 'Home'),
+          LiquidNavItem(icon: AppIcons.requests, activeIcon: AppIcons.requests, label: 'Requests'),
+          LiquidNavItem(icon: AppIcons.trip, activeIcon: AppIcons.trip, label: 'Trip'),
+          LiquidNavItem(icon: AppIcons.earnings, activeIcon: AppIcons.earnings, label: 'Earnings'),
+          LiquidNavItem(icon: AppIcons.history, activeIcon: AppIcons.history, label: 'History'),
+          LiquidNavItem(icon: AppIcons.profile, activeIcon: AppIcons.profileActive, label: 'Profile'),
         ],
       ),
     );

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/ilocos_norte.dart';
-import '../../../../shared/widgets/sticky_action_bar.dart';
+import '../../../../shared/widgets/booking_stepper.dart';
+import 'booking_confirmation_screen.dart' show paymentMethodLabel;
+import '../../../../shared/widgets/success_moment.dart';
 import '../../../../shared/widgets/loading_skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
@@ -10,7 +12,6 @@ import '../../../../core/services/route_service.dart';
 import '../../../../core/utils/fare_estimator.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../shared/models/vehicle_model.dart';
-import '../../../../shared/widgets/app_button.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/customer_repository.dart';
 import '../widgets/location_picker_field.dart';
@@ -33,7 +34,6 @@ class BookParcelScreen extends ConsumerStatefulWidget {
 }
 
 class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
-  final _formKey = GlobalKey<FormState>();
   final _senderNameController = TextEditingController();
   final _senderPhoneController = TextEditingController();
   final _senderAddressController = TextEditingController();
@@ -163,7 +163,7 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate() || _vehicle == null) return;
+    if (_vehicle == null) return; // the fields were checked by BookingStepper
     if (!checkServiceArea(context, {'Sender address': _senderPoint, 'Receiver address': _receiverPoint})) return;
 
     setState(() => _submitting = true);
@@ -189,14 +189,14 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
           );
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_paymentMethod == 'cash'
-              ? 'Parcel delivery requested! Pay the rider in cash.'
-              : 'Parcel delivery requested! We\'ll ask you to pay once the rider confirms the fare at pickup.'),
-          backgroundColor: AppColors.success,
-        ),
+      await showSuccessMoment(
+        context,
+        title: 'Parcel delivery requested!',
+        message: _paymentMethod == 'cash'
+            ? 'Pay the rider in cash.'
+            : 'We\'ll ask you to pay once the rider confirms the fare at pickup.',
       );
+      if (!mounted) return;
       Navigator.pop(context);
     } catch (e) {
       if (mounted) {
@@ -217,13 +217,6 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Send Parcel')),
-      bottomNavigationBar: StickyActionBar(
-        child: AppButton(
-          text: 'Book Parcel Delivery',
-          isLoading: _submitting,
-          onPressed: (vehiclesAsync.valueOrNull?.isEmpty ?? true) ? null : _submit,
-        ),
-      ),
       body: vehiclesAsync.when(
         loading: () => const SkeletonList(count: 3),
         error: (e, _) => Center(
@@ -231,15 +224,26 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
                 textAlign: TextAlign.center)),
         data: (vehicles) {
           _vehicle ??= vehicles.isNotEmpty ? vehicles.first : null;
+          final fare = _fare;
+          final fareLabel = fare == null ? '—' : Formatters.currency(fare);
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Form(
-              key: _formKey,
-              onChanged: () => setState(() {}),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
+          return BookingStepper(
+            fare: fareLabel,
+            finishLabel: 'Book Parcel Delivery',
+            finishLoading: _submitting,
+            onFinish: vehicles.isEmpty ? null : _submit,
+            onChanged: () => setState(() {}),
+            summary: () => [
+              ('Pickup', _senderAddressController.text),
+              ('Drop-off', _receiverAddressController.text),
+              ('Receiver', _receiverNameController.text),
+              ('Parcel', _parcelSize),
+              ('Vehicle', _vehicle?.name ?? ''),
+              ('Payment', paymentMethodLabel(_paymentMethod)),
+              ('Estimated fare', fareLabel),
+            ],
+            steps: [
+              BookingStep('Where', [
                   RidersNearYouMap(vehicleName: _vehicle?.name, origin: _senderPoint),
                   const SizedBox(height: 16),
                   _SectionCard(
@@ -305,7 +309,8 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
                       routePoints: _route?.points,
                     ),
                   ],
-                  const SizedBox(height: 16),
+              ]),
+              BookingStep('Parcel', [
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -377,7 +382,8 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
+              ]),
+              BookingStep('Vehicle', [
                   DropdownButtonFormField<VehicleModel>(
                     initialValue: _vehicle,
                     isExpanded: true,
@@ -392,17 +398,16 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
                     onChanged: (v) => setState(() => _vehicle = v),
                   ),
                   const SizedBox(height: 16),
+                  _fareBox(),
+              ]),
+              BookingStep('Payment', [
                   PaymentMethodSelector(
                     value: _paymentMethod,
                     onChanged: (v) => setState(() => _paymentMethod = v),
                     onlineNote: 'You\'ll be asked to pay once the rider confirms the fare at pickup.',
                   ),
-                  const SizedBox(height: 16),
-                  _fareBox(),
-                  const SizedBox(height: 16),
-                ],
-              ),
-            ),
+              ]),
+            ],
           );
         },
       ),

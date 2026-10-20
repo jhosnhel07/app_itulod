@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/ilocos_norte.dart';
-import '../../../../shared/widgets/sticky_action_bar.dart';
+import '../../../../shared/widgets/booking_stepper.dart';
 import '../../../../shared/widgets/loading_skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
@@ -10,7 +10,6 @@ import '../../../../core/services/route_service.dart';
 import '../../../../core/utils/fare_estimator.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../shared/models/vehicle_model.dart';
-import '../../../../shared/widgets/app_button.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../widgets/location_picker_field.dart';
 import '../widgets/route_preview_map.dart';
@@ -27,7 +26,6 @@ class BookRideScreen extends ConsumerStatefulWidget {
 }
 
 class _BookRideScreenState extends ConsumerState<BookRideScreen> {
-  final _formKey = GlobalKey<FormState>();
   final _pickupController = TextEditingController();
   final _destinationController = TextEditingController();
 
@@ -174,7 +172,7 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
   // ── Submit ────────────────────────────────────────────────────────────
 
   void _submit() {
-    if (!_formKey.currentState!.validate() || _vehicle == null) return;
+    if (_vehicle == null) return; // the fields were checked by BookingStepper
     if (!checkServiceArea(context, {
       'Pickup': _pickupPoint,
       'Destination': _destinationPoint,
@@ -233,25 +231,20 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Book a Ride')),
-      bottomNavigationBar: StickyActionBar(
-        child: AppButton(
-          text: 'Review Booking',
-          onPressed: (vehiclesAsync.valueOrNull?.isEmpty ?? true) ? null : _submit,
-        ),
-      ),
       body: vehiclesAsync.when(
         loading: () => const SkeletonList(count: 3),
         error: (e, _) => Center(child: Text('Could not load vehicles.\n$e', textAlign: TextAlign.center)),
         data: (vehicles) {
           _vehicle ??= vehicles.isNotEmpty ? vehicles.first : null;
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Form(
-              key: _formKey,
-              onChanged: () => setState(() {}),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
+          final fare = _fare;
+          // Where → Vehicle → Payment here; Confirm is BookingConfirmationScreen.
+          return BookingStepper(
+            fare: fare == null ? '—' : Formatters.currency(fare),
+            finishLabel: 'Review Booking',
+            onFinish: vehicles.isEmpty ? null : _submit,
+            onChanged: () => setState(() {}),
+            steps: [
+              BookingStep('Where', [
                   RidersNearYouMap(vehicleName: _vehicle?.name, origin: _pickupPoint),
                   const SizedBox(height: 16),
                   Card(
@@ -326,7 +319,8 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
                       routePoints: _route?.points,
                     ),
                   ],
-                  const SizedBox(height: 16),
+              ]),
+              BookingStep('Vehicle', [
                   DropdownButtonFormField<VehicleModel>(
                     initialValue: _vehicle,
                     isExpanded: true,
@@ -374,6 +368,9 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
+                  _fareBox(),
+              ]),
+              BookingStep('Payment', [
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -402,12 +399,8 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  _fareBox(),
-                  const SizedBox(height: 16),
-                ],
-              ),
-            ),
+              ]),
+            ],
           );
         },
       ),

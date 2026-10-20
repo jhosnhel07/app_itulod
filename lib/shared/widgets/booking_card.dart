@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/constants/app_icons.dart';
 import '../../core/constants/app_typography.dart';
 import '../../core/theme/app_decorations.dart';
 import '../../core/utils/formatters.dart';
@@ -18,16 +20,17 @@ class BookingCard extends StatelessWidget {
     this.trailing,
   });
 
-  (IconData, Color) get _kind {
+  (FaIconData, Color) get _kind {
+    final icon = AppIcons.forKind(booking.kind);
     switch (booking.kind) {
       case BookingKind.transport:
-        return (Icons.directions_car_rounded, AppColors.primary);
+        return (icon, AppColors.primary);
       case BookingKind.food:
-        return (Icons.restaurant_rounded, AppColors.secondary);
+        return (icon, AppColors.secondary);
       case BookingKind.parcel:
-        return (Icons.inventory_2_rounded, AppColors.success);
+        return (icon, AppColors.success);
       case BookingKind.hauling:
-        return (Icons.local_shipping_rounded, AppColors.primaryDark);
+        return (icon, AppColors.primaryDark);
     }
   }
 
@@ -53,7 +56,7 @@ class BookingCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(9),
                       decoration: AppDecorations.iconTile(tint),
-                      child: Icon(icon, color: tint, size: 20),
+                      child: SizedBox.square(dimension: 20, child: Center(child: FaIcon(icon, color: tint, size: 17))),
                     ),
                     const SizedBox(width: 10),
                     Expanded(

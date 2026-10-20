@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../../../shared/widgets/loading_skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/constants/app_icons.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../shared/models/booking_models.dart';
@@ -29,19 +31,6 @@ final riderActiveBookingsProvider =
 
 class RiderRequestsTab extends ConsumerWidget {
   const RiderRequestsTab({super.key});
-
-  IconData _icon(BookingKind kind) {
-    switch (kind) {
-      case BookingKind.transport:
-        return Icons.directions_car_rounded;
-      case BookingKind.food:
-        return Icons.restaurant_rounded;
-      case BookingKind.parcel:
-        return Icons.inventory_2_rounded;
-      case BookingKind.hauling:
-        return Icons.local_shipping_rounded;
-    }
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -106,7 +95,9 @@ class RiderRequestsTab extends ConsumerWidget {
                               color: AppColors.primary50,
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Icon(_icon(b.kind), color: AppColors.primary, size: 20),
+                            child: SizedBox.square(
+                                dimension: 20,
+                                child: Center(child: FaIcon(AppIcons.forKind(b.kind), color: AppColors.primary, size: 17))),
                           ),
                           const SizedBox(width: 10),
                           Expanded(

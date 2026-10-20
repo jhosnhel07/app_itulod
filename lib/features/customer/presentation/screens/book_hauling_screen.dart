@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/ilocos_norte.dart';
-import '../../../../shared/widgets/sticky_action_bar.dart';
+import '../../../../shared/widgets/booking_stepper.dart';
+import 'booking_confirmation_screen.dart' show paymentMethodLabel;
+import '../../../../shared/widgets/success_moment.dart';
 import '../../../../shared/widgets/loading_skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
@@ -11,7 +13,6 @@ import '../../../../core/utils/fare_estimator.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../shared/models/booking_models.dart';
 import '../../../../shared/models/vehicle_model.dart';
-import '../../../../shared/widgets/app_button.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/customer_repository.dart';
 import '../widgets/location_picker_field.dart';
@@ -41,7 +42,6 @@ class BookHaulingScreen extends ConsumerStatefulWidget {
 }
 
 class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
-  final _formKey = GlobalKey<FormState>();
   final _senderName = TextEditingController();
   final _senderPhone = TextEditingController();
   final _pickupAddress = TextEditingController();
@@ -178,7 +178,6 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
     if (!checkServiceArea(context, {'Pickup address': _pickupPoint, 'Drop-off address': _dropoffPoint})) return;
     final vehicle = _vehicle;
     if (vehicle == null) return;
@@ -223,14 +222,16 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
             distanceKm: _distanceKm,
           );
       if (!mounted) return;
-      messenger.showSnackBar(SnackBar(
-        content: Text(scheduled != null
-            ? 'Hauling scheduled for ${Formatters.date(scheduled)}. We\'ll find a driver closer to the time.'
+      await showSuccessMoment(
+        context,
+        title: scheduled != null ? 'Hauling scheduled' : 'Hauling booked!',
+        message: scheduled != null
+            ? 'For ${Formatters.date(scheduled)}. We\'ll find a driver closer to the time.'
             : _paymentMethod == 'cash'
-                ? 'Hauling booked! Waiting for a driver to accept.'
-                : 'Hauling booked! We\'ll ask you to pay once the driver confirms the fare at pickup.'),
-        backgroundColor: AppColors.success,
-      ));
+                ? 'Waiting for a driver to accept.'
+                : 'We\'ll ask you to pay once the driver confirms the fare at pickup.',
+      );
+      if (!mounted) return;
       Navigator.pop(context);
     } catch (e) {
       messenger.showSnackBar(SnackBar(
@@ -249,27 +250,31 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Book Hauling')),
-      bottomNavigationBar: StickyActionBar(
-        child: AppButton(
-          text: 'Book Hauling',
-          icon: Icons.local_shipping_rounded,
-          isLoading: _submitting,
-          onPressed: (vehiclesAsync.valueOrNull?.isEmpty ?? true) ? null : _submit,
-        ),
-      ),
       body: vehiclesAsync.when(
         loading: () => const SkeletonList(count: 3),
         error: (e, _) => Center(child: Text('Could not load vehicles.\n$e', textAlign: TextAlign.center)),
         data: (vehicles) {
           _vehicle ??= vehicles.isNotEmpty ? vehicles.first : null;
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Form(
-              key: _formKey,
-              onChanged: () => setState(() {}),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
+          final vehicleFare = _vehicleFare;
+          final fareLabel = vehicleFare == null ? '—' : Formatters.currency(vehicleFare + _helpersFare);
+          return BookingStepper(
+            fare: fareLabel,
+            finishLabel: 'Book Hauling',
+            finishLoading: _submitting,
+            onFinish: vehicles.isEmpty ? null : _submit,
+            onChanged: () => setState(() {}),
+            summary: () => [
+              ('Pickup', _pickupAddress.text),
+              ('Drop-off', _dropoffAddress.text),
+              ('Items', _description.text),
+              ('Helpers', _helpers == 0 ? 'None — driver only' : '$_helpers'),
+              ('Vehicle', _vehicle?.name ?? ''),
+              if (_scheduledFor != null) ('Scheduled for', Formatters.date(_scheduledFor!)),
+              ('Payment', paymentMethodLabel(_paymentMethod)),
+              ('Estimated fare', fareLabel),
+            ],
+            steps: [
+              BookingStep('Where', [
                   RidersNearYouMap(vehicleName: _vehicle?.name, origin: _pickupPoint, hauling: true),
                   const SizedBox(height: 14),
                   _section('Pickup', Icons.location_on_rounded, [
@@ -321,7 +326,8 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
                     const SizedBox(height: 14),
                     RoutePreviewMap(pickup: _pickupPoint!, destination: _dropoffPoint!, routePoints: _route?.points),
                   ],
-                  const SizedBox(height: 14),
+              ]),
+              BookingStep('Load', [
                   _section('What are we moving?', Icons.inventory_2_rounded, [
                     Wrap(
                       spacing: 8,
@@ -381,7 +387,8 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
                       decoration: const InputDecoration(hintText: 'Instructions (e.g. 2nd floor, narrow stairs)'),
                     ),
                   ]),
-                  const SizedBox(height: 14),
+              ]),
+              BookingStep('Vehicle', [
                   DropdownButtonFormField<VehicleModel>(
                     initialValue: _vehicle,
                     isExpanded: true,
@@ -417,21 +424,20 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
                     ),
                   ),
                   const SizedBox(height: 14),
+                  _fareBox(),
+              ]),
+              BookingStep('Payment', [
                   PaymentMethodSelector(
                     value: _paymentMethod,
                     onChanged: (v) => setState(() => _paymentMethod = v),
                     onlineNote: 'You\'ll be asked to pay once the driver confirms the fare at pickup.',
                   ),
-                  const SizedBox(height: 14),
-                  _fareBox(),
                   if (_availability != null) ...[
                     const SizedBox(height: 12),
                     _availabilityNotice(_availability!),
                   ],
-                  const SizedBox(height: 16),
-                ],
-              ),
-            ),
+              ]),
+            ],
           );
         },
       ),

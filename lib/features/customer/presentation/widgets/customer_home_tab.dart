@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/constants/app_icons.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/theme/app_decorations.dart';
 import '../../../../core/utils/formatters.dart';
@@ -524,28 +526,28 @@ class _ServiceTiles extends StatelessWidget {
       children: [
         _ServiceTile(
           label: 'Ride',
-          icon: Icons.directions_car_rounded,
+          icon: AppIcons.rideTile,
           color: const Color(0xFF2196F3),
           onTap: () => open(const BookRideScreen()),
         ),
         const SizedBox(width: 10),
         _ServiceTile(
           label: 'Food',
-          icon: Icons.restaurant_rounded,
+          icon: AppIcons.food,
           color: const Color(0xFFE0455F),
           onTap: () => open(const BookFoodScreen()),
         ),
         const SizedBox(width: 10),
         _ServiceTile(
           label: 'Parcel',
-          icon: Icons.inventory_2_rounded,
+          icon: AppIcons.parcel,
           color: const Color(0xFF1A9D63),
           onTap: () => open(const BookParcelScreen()),
         ),
         const SizedBox(width: 10),
         _ServiceTile(
           label: 'Hauling',
-          icon: Icons.local_shipping_rounded,
+          icon: AppIcons.hauling,
           color: const Color(0xFF0D47A1),
           onTap: () => open(const BookHaulingScreen()),
         ),
@@ -556,7 +558,7 @@ class _ServiceTiles extends StatelessWidget {
 
 class _ServiceTile extends StatelessWidget {
   final String label;
-  final IconData icon;
+  final FaIconData icon;
   final Color color;
   final VoidCallback onTap;
 
@@ -589,7 +591,7 @@ class _ServiceTile extends StatelessWidget {
                           BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 6)),
                         ],
                       ),
-                      child: Icon(icon, color: Colors.white, size: 24),
+                      child: Center(child: FaIcon(icon, color: Colors.white, size: 21)),
                     ),
                     const SizedBox(height: 8),
                     Text(label, style: AppTypography.bodyBold.copyWith(fontSize: 13.5)),

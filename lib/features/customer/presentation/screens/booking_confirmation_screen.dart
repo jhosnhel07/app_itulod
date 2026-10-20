@@ -7,6 +7,8 @@ import '../../../../core/utils/formatters.dart';
 import '../../../../shared/models/booking_models.dart';
 import '../../../../shared/models/vehicle_model.dart';
 import '../../../../shared/widgets/app_button.dart';
+import '../../../../shared/widgets/booking_stepper.dart';
+import '../../../../shared/widgets/success_moment.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/customer_repository.dart';
 import 'booking_receipt_screen.dart';
@@ -130,6 +132,14 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
       // The booking is placed only — online payment (when chosen) is started
       // later from Home or My Bookings, not inline here.
       if (!mounted) return;
+      await showSuccessMoment(
+        context,
+        title: widget.scheduledFor != null ? 'Ride scheduled' : 'Ride booked!',
+        message: widget.scheduledFor != null
+            ? 'For ${Formatters.date(widget.scheduledFor!)}. We\'ll line up a rider closer to the time.'
+            : 'Waiting for a rider to accept.',
+      );
+      if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => BookingReceiptScreen(
@@ -161,6 +171,13 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Last step of BookRideScreen's Where → Vehicle → Payment.
+            BookingStepsHeader(
+              titles: const ['Where', 'Vehicle', 'Payment', 'Confirm'],
+              current: 3,
+              fare: Formatters.currency(_total),
+            ),
+            const SizedBox(height: 16),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/ilocos_norte.dart';
 import '../../../../shared/widgets/sticky_action_bar.dart';
+import '../../../../shared/widgets/success_moment.dart';
 import '../../../../shared/widgets/loading_skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
@@ -172,12 +173,14 @@ class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
 
       ref.read(cartProvider.notifier).clearCart();
       if (!mounted) return;
-      _toast(
-        _paymentMethod == 'cash'
-            ? 'Order placed! You\'ll pay ${order.displayFare} cash on delivery.'
-            : 'Order placed (${order.displayFare})! We\'ll ask you to pay once the rider confirms the fare at pickup.',
-        AppColors.success,
+      await showSuccessMoment(
+        context,
+        title: 'Order placed!',
+        message: _paymentMethod == 'cash'
+            ? 'You\'ll pay ${order.displayFare} cash on delivery.'
+            : 'Total ${order.displayFare}. We\'ll ask you to pay once the rider confirms the fare at pickup.',
       );
+      if (!mounted) return;
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       if (mounted) {

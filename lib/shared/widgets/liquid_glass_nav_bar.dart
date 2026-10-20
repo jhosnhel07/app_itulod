@@ -1,12 +1,13 @@
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter, lerpDouble;
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 
 class LiquidNavItem {
-  final IconData icon;
-  final IconData activeIcon;
+  final FaIconData icon;
+  final FaIconData activeIcon;
   final String label;
   final int badge;
   const LiquidNavItem({
@@ -203,7 +204,11 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar> with SingleTicker
     final selected = i == widget.currentIndex;
     final showLabel = !compact && (!widget.labelsOnlyWhenSelected || selected);
     final color = selected ? AppColors.primaryDark : AppColors.neutral500;
-    Widget icon = Icon(selected ? item.activeIcon : item.icon, size: 23, color: color);
+    Widget icon = SizedBox(
+      width: 26,
+      height: 23,
+      child: Center(child: FaIcon(selected ? item.activeIcon : item.icon, size: 20, color: color)),
+    );
     if (item.badge > 0) {
       icon = Badge(label: Text('${item.badge}'), child: icon);
     }

@@ -8,6 +8,7 @@ import '../../../../core/utils/formatters.dart';
 import '../../../../shared/models/booking_models.dart';
 import '../../../../shared/models/rider_application_model.dart';
 import '../../../../shared/widgets/status_badge.dart';
+import '../../../../shared/widgets/success_moment.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/rider_repository.dart';
 import '../screens/rider_dashboard_screen.dart' show riderOnlineStatusProvider;
@@ -332,12 +333,8 @@ class _ActiveJobCard extends ConsumerWidget {
       ref.invalidate(riderRequestsProvider);
       ref.invalidate(riderEarningsProvider);
       if (context.mounted && isOngoing) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Trip completed! Earnings updated.'),
-            backgroundColor: AppColors.success,
-          ),
-        );
+        await showSuccessMoment(context,
+            title: 'Trip complete!', message: 'Nice work — your earnings are updated.');
       }
     } catch (e) {
       if (context.mounted) {

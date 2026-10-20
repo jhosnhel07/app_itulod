@@ -3,6 +3,7 @@ import '../../../../shared/widgets/liquid_glass_nav_bar.dart';
 import '../../../../shared/widgets/theme_toggle_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/constants/app_icons.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/services/app_alerts.dart';
 import '../../../../core/services/push_service.dart';
@@ -160,16 +161,15 @@ class _CustomerDashboardScreenState
           if (i == 2) ref.invalidate(unreadNotificationsProvider);
         },
         items: [
-          const LiquidNavItem(icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: 'Home'),
-          const LiquidNavItem(
-              icon: Icons.receipt_long_outlined, activeIcon: Icons.receipt_long_rounded, label: 'Bookings'),
+          const LiquidNavItem(icon: AppIcons.home, activeIcon: AppIcons.homeActive, label: 'Home'),
+          const LiquidNavItem(icon: AppIcons.history, activeIcon: AppIcons.history, label: 'Bookings'),
           LiquidNavItem(
-            icon: Icons.notifications_outlined,
-            activeIcon: Icons.notifications_rounded,
+            icon: AppIcons.notifications,
+            activeIcon: AppIcons.notificationsActive,
             label: 'Notifications',
             badge: unreadAsync.value ?? 0,
           ),
-          const LiquidNavItem(icon: Icons.person_outline, activeIcon: Icons.person_rounded, label: 'Profile'),
+          const LiquidNavItem(icon: AppIcons.profile, activeIcon: AppIcons.profileActive, label: 'Profile'),
         ],
       ),
     );

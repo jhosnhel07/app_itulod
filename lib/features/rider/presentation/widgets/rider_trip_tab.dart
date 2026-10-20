@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../../shared/widgets/loading_skeleton.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +11,7 @@ import '../../../../core/utils/formatters.dart';
 import '../../../../shared/models/booking_models.dart';
 import '../../../../shared/providers/booking_extras_providers.dart';
 import '../../../../shared/widgets/app_button.dart';
+import '../../../../shared/widgets/success_moment.dart';
 import '../../../../shared/widgets/app_confirm_dialog.dart';
 import '../../../../shared/widgets/booking_route_map.dart';
 import '../../../../shared/widgets/status_badge.dart';
@@ -139,9 +142,12 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
   /// Runs [action] even if this card is rebuilt meanwhile (a live update can
   /// replace it): the providers and the messenger are captured up front, so
   /// the list still refreshes and the result is still shown.
-  Future<void> _run(Future<void> Function() action, {String? success}) async {
+  /// [done] is a title for the success moment (showSuccessMoment) instead of
+  /// a snackbar — used for the big one, completing a trip.
+  Future<void> _run(Future<void> Function() action, {String? success, String? done}) async {
     final container = ProviderScope.containerOf(context, listen: false);
     final messenger = ScaffoldMessenger.maybeOf(context);
+    final rootNav = Navigator.of(context, rootNavigator: true);
     void show(String message, Color color) =>
         messenger?.showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
     if (mounted) setState(() => _busy = true);
@@ -152,7 +158,11 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
         ..invalidate(riderRequestsProvider)
         ..invalidate(riderHomeSnapshotProvider)
         ..invalidate(riderEarningsProvider);
-      if (success != null) show(success, AppColors.success);
+      if (done != null && rootNav.mounted) {
+        unawaited(showSuccessMoment(rootNav.context, title: done, message: success));
+      } else if (success != null) {
+        show(success, AppColors.success);
+      }
     } catch (e) {
       show(_clean(e), AppColors.danger);
     } finally {
@@ -248,7 +258,7 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
     final repo = ref.read(riderRepositoryProvider);
     if (booking.kind == BookingKind.transport) {
       await _run(() => repo.updateStatus(booking, 'completed', riderId: riderId),
-          success: 'Trip completed! Earnings updated.');
+          done: 'Trip complete!', success: 'Nice work — your earnings are updated.');
       return;
     }
 
@@ -259,7 +269,7 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
       return;
     }
     await _run(() => repo.updateStatus(booking, 'completed', riderId: riderId),
-        success: 'Delivery completed! Earnings updated.');
+        done: 'Delivery complete!', success: 'Nice work — your earnings are updated.');
   }
 
   bool get _hasProof => (booking.deliveryProofUrl ?? '').isNotEmpty;

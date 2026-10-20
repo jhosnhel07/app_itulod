@@ -77,7 +77,8 @@ class AppTypography {
 
   // Caption — metadata, timestamps.
   static TextStyle get caption => _cached('caption',
-      () => _body(12, FontWeight.w500, height: 1.3, color: AppColors.neutral400));
+      // neutral500 (not 400): small text needs ≥ 4.5:1 contrast to read outdoors.
+      () => _body(12, FontWeight.w500, height: 1.3, color: AppColors.neutral500));
 
   static TextStyle get captionDark => _cached('captionDark',
       () => _body(12.5, FontWeight.w500, height: 1.35, color: AppColors.neutral600));
