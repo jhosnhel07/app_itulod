@@ -40,10 +40,16 @@
       "Select the type of vehicle you'll use for deliveries and rides.";
   static const String documentsTitle = 'Upload Documents';
   static const String documentsSub =
-      'Upload each required document separately. Choose the correct paper, permit, or license for every slot below.';
+      'All documents are required except the NBI clearance. Choose the correct paper, permit, or license for every slot below.';
   static const String reviewTitle = 'Review Your Application';
   static const String reviewSub =
       'Please confirm all details below before submitting your rider application.';
+  /// The web app — its Terms / Privacy pages and the admin console.
+  static const String webBaseUrl = 'https://i-tulod-pi.vercel.app';
+  static const String termsUrl = '$webBaseUrl/terms.html';
+  static const String privacyUrl = '$webBaseUrl/privacy.html';
+  static const String webAdminUrl = '$webBaseUrl/admin/dashboard.html';
+
   static const String termsPrefix = 'I agree to the';
   static const String termsOfService = 'Terms of Service';
   static const String privacyPolicy = 'Privacy Policy';

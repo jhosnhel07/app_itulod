@@ -35,7 +35,9 @@ class _GcashCheckoutScreenState extends State<GcashCheckoutScreen> {
           },
           onNavigationRequest: (request) {
             final url = request.url;
-            if (url.contains('/paymongo-redirect') || url.contains('payment-return.html')) {
+            // PayMongo sends the customer back to the web's payment-return.html
+            // (create-payment / wallet-topup redirect URLs).
+            if (url.contains('payment-return.html')) {
               final uri = Uri.parse(url);
               final success = uri.queryParameters['status'] == 'success' || uri.queryParameters['result'] == 'success';
               Navigator.of(context).pop(success);

@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_strings.dart';
 import '../../../../core/constants/vehicle_catalog.dart';
@@ -67,6 +69,15 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   final ImagePicker _picker = ImagePicker();
 
+  /// Opens the web's Terms / Privacy pages (the links next to the checkbox).
+  late final TapGestureRecognizer _termsTap = TapGestureRecognizer()..onTap = () => _openLink(AppStrings.termsUrl);
+  late final TapGestureRecognizer _privacyTap = TapGestureRecognizer()..onTap = () => _openLink(AppStrings.privacyUrl);
+
+  Future<void> _openLink(String url) async {
+    final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    if (!ok) _showError("Couldn't open the page. Visit $url");
+  }
+
   @override
   void initState() {
     super.initState();
@@ -85,6 +96,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _vehiclePlateController.dispose();
     _vehicleColorController.dispose();
     _emailDebounceTimer?.cancel();
+    _termsTap.dispose();
+    _privacyTap.dispose();
     super.dispose();
   }
 
@@ -671,19 +684,25 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         const TextSpan(text: '${AppStrings.termsPrefix} '),
                         TextSpan(
                           text: AppStrings.termsOfService,
+                          recognizer: _termsTap,
                           style: GoogleFonts.inter(
                             fontSize: 13.6,
                             fontWeight: FontWeight.w600,
                             color: AppColors.brandBlue,
+                            decoration: TextDecoration.underline,
+                            decorationColor: AppColors.brandBlue,
                           ),
                         ),
                         const TextSpan(text: ' and '),
                         TextSpan(
                           text: AppStrings.privacyPolicy,
+                          recognizer: _privacyTap,
                           style: GoogleFonts.inter(
                             fontSize: 13.6,
                             fontWeight: FontWeight.w600,
                             color: AppColors.brandBlue,
+                            decoration: TextDecoration.underline,
+                            decorationColor: AppColors.brandBlue,
                           ),
                         ),
                         const TextSpan(text: ' ${AppStrings.termsSuffix}'),

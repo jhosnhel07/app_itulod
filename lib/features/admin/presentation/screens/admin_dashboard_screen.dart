@@ -2,6 +2,7 @@
 import '../../../../shared/widgets/theme_toggle_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/constants/app_strings.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../shared/screens/profile_screen.dart';
 import '../../../../shared/widgets/app_button.dart';
@@ -12,7 +13,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 
 /// Admin tools (analytics, rider approvals, bookings, vehicles, restaurants,
 /// payments, promos, announcements, support) live in the web console only.
-const String _webAdminUrl = 'https://itulod.vercel.app/admin/dashboard.html';
+const String _webAdminUrl = AppStrings.webAdminUrl;
 
 class AdminDashboardScreen extends ConsumerWidget {
   const AdminDashboardScreen({super.key});
