@@ -21,6 +21,7 @@ import '../widgets/rider_trip_tab.dart';
 import '../../../../shared/models/booking_models.dart';
 import '../../data/rider_location_broadcaster.dart';
 import '../../data/rider_repository.dart';
+import '../../../customer/presentation/widgets/notifications_tab.dart';
 
 final riderOnlineStatusProvider = StateNotifierProvider<RiderOnlineNotifier, AsyncValue<bool>>((ref) {
   // Only the id matters — profile edits (synced live) must not rebuild this.
@@ -174,6 +175,28 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
   static const _requestsTab = 1;
   static const _tripTab = 2;
 
+  static const _historyTab = 4;
+
+  /// The same Notifications screen as the customer's (web: the rider
+  /// dashboard's Notifications tab): tap one to read it, unread until opened.
+  void _openNotifications(BuildContext context) {
+    final navigator = Navigator.of(context);
+    navigator.push(MaterialPageRoute(
+      builder: (_) => Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(title: const Text('Notifications')),
+        body: NotificationsTab(
+          onOpenBookings: () {
+            navigator.pop();
+            if (mounted) setState(() => _index = _historyTab);
+          },
+        ),
+      ),
+    )).then((_) {
+      if (mounted) ref.invalidate(unreadNotificationsProvider);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -200,12 +223,15 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
         'parcel_deliveries',
         'hauling_bookings',
         'payments',
+        'notifications',
       ],
       onChange: () {
         ref.invalidate(riderHomeSnapshotProvider);
         ref.invalidate(riderRequestsProvider);
         ref.invalidate(riderActiveBookingsProvider);
         ref.invalidate(riderEarningsProvider);
+        ref.invalidate(notificationsProvider);
+        ref.invalidate(unreadNotificationsProvider);
       },
     );
     // Automatic booking expiration: catches anything the 15-minute grace
@@ -226,6 +252,7 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
     final application = ref.watch(authNotifierProvider).riderApplication;
     final approved = application?.status == ApplicationStatus.approved;
     final onlineAsync = ref.watch(riderOnlineStatusProvider);
+    final unread = ref.watch(unreadNotificationsProvider).valueOrNull ?? 0;
 
     final tabs = [
       RiderHomeTab(
@@ -282,6 +309,15 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
                             style: AppTypography.caption
                                 .copyWith(color: Colors.white70)),
                       ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: unread > 0 ? 'Notifications ($unread unread)' : 'Notifications',
+                    onPressed: () => _openNotifications(context),
+                    icon: Badge.count(
+                      count: unread,
+                      isLabelVisible: unread > 0,
+                      child: const Icon(Icons.notifications_rounded, color: Colors.white),
                     ),
                   ),
                   const ThemeToggleButton(color: Colors.white),
