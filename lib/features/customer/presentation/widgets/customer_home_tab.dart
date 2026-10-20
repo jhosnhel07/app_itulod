@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/theme/app_decorations.dart';
@@ -21,12 +22,76 @@ import 'support_request_dialog.dart';
 import '../../../chat/presentation/screens/chat_screen.dart' as import_chat;
 
 /// Lifetime stats + the booking currently in flight. Refreshed by realtime.
+final unpaidFeesProvider = FutureProvider.autoDispose<double>((ref) async {
+  if (ref.watch(authProfileIdProvider).isEmpty) return 0;
+  try {
+    return await ref.watch(customerRepositoryProvider).fetchUnpaidFees();
+  } catch (_) {
+    return 0;
+  }
+});
+
 final customerHomeSummaryProvider =
     FutureProvider.autoDispose<CustomerHomeSummary>((ref) async {
   final repo = ref.watch(customerRepositoryProvider);
   final userId = ref.watch(authProfileIdProvider);
   return repo.fetchHomeSummary(userId);
 });
+
+/// An unpaid cancellation fee blocks new bookings until it's taken from the
+/// wallet (web: renderUnpaidFee) — say so before the customer tries to book.
+class _UnpaidFeeBanner extends ConsumerWidget {
+  final double owed;
+  const _UnpaidFeeBanner({required this.owed});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.danger.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.danger.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.error_outline_rounded, color: AppColors.danger),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('You have an unpaid ${Formatters.currency(owed)} cancellation fee',
+                        style: AppTypography.bodyBold.copyWith(fontSize: 14)),
+                    const SizedBox(height: 2),
+                    Text('Top up your iTULOD wallet — the fee is taken automatically, then you can book again.',
+                        style: AppTypography.caption),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              onPressed: () async {
+                await context.push('/customer/wallet');
+                ref.invalidate(unpaidFeesProvider);
+              },
+              icon: const Icon(Icons.account_balance_wallet_rounded, size: 18),
+              label: const Text('Top up wallet'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class CustomerHomeTab extends ConsumerWidget {
   const CustomerHomeTab({super.key});
@@ -38,15 +103,22 @@ class CustomerHomeTab extends ConsumerWidget {
     final summaryAsync = ref.watch(customerHomeSummaryProvider);
     final summary = summaryAsync.value;
 
+    final owed = ref.watch(unpaidFeesProvider).valueOrNull ?? 0;
+
     return RefreshIndicator(
       onRefresh: () async {
         ref.invalidate(customerHomeSummaryProvider);
+        ref.invalidate(unpaidFeesProvider);
         await ref.read(customerHomeSummaryProvider.future);
       },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
         children: [
+          if (owed > 0) ...[
+            _UnpaidFeeBanner(owed: owed),
+            const SizedBox(height: 16),
+          ],
           // ── Hero ────────────────────────────────────────────────
           Container(
             padding: const EdgeInsets.all(22),

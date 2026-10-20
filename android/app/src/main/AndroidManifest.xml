@@ -7,6 +7,13 @@
          map; fine gives an accurate pickup pin. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- Riders: keep sharing location while Online with the app in the background
+         (a foreground service with an "iTULOD — you're online" notification). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Booking updates / new job alerts as phone notifications (Android 13+). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <!-- Profile photo / rider document upload (image_picker). READ_MEDIA_IMAGES
          covers Android 13+; the legacy permission covers older OS builds and

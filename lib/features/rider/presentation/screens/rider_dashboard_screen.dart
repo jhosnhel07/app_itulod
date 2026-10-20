@@ -22,6 +22,7 @@ import '../../../../shared/models/booking_models.dart';
 import '../../data/rider_location_broadcaster.dart';
 import '../../data/rider_repository.dart';
 import '../../../customer/presentation/widgets/notifications_tab.dart';
+import '../../../../core/services/app_alerts.dart';
 
 final riderOnlineStatusProvider = StateNotifierProvider<RiderOnlineNotifier, AsyncValue<bool>>((ref) {
   // Only the id matters — profile edits (synced live) must not rebuild this.
@@ -197,9 +198,31 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
     });
   }
 
+  /// Stopped when the dashboard goes (log out) — ref can't be used in dispose.
+  AppAlerts? _alerts;
+
+  @override
+  void dispose() {
+    _alerts?.stop();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
+    // Phone notifications: booking updates, and new jobs while Online
+    // (the location foreground service keeps them coming in the background).
+    final alerts = ref.read(appAlertsProvider);
+    _alerts = alerts;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userId = ref.read(authNotifierProvider).profile?.id;
+      if (mounted && userId != null) alerts.start(userId: userId, rider: true);
+    });
+    ref.listenManual<AsyncValue<bool>>(
+      riderOnlineStatusProvider,
+      (_, next) => alerts.riderOnline = next.valueOrNull ?? false,
+      fireImmediately: true,
+    );
     // Live GPS to the customer while a job is accepted/ongoing — the web's
     // startLocationBroadcast() in loadAccepted().
     ref.listenManual<AsyncValue<List<BookingBase>>>(

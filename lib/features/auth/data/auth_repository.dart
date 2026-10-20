@@ -231,10 +231,13 @@ class AuthRepository {
   /// address) so the form neither blocks nor falsely reassures.
   Future<bool?> checkEmailExists(String email) async {
     try {
+      // Weak signal must not leave sign-up stuck on "Checking availability…"
+      // (which blocks Continue): give up after a few seconds and let the
+      // real check at sign-up decide.
       final response = await _supabase.functions.invoke(
         'check-email',
         body: {'email': email.trim().toLowerCase()},
-      );
+      ).timeout(const Duration(seconds: 8));
       final data = response.data;
       if (data is Map && data['available'] is bool) return !(data['available'] as bool);
       return null;

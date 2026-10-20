@@ -417,6 +417,14 @@ class CustomerRepository {
   }
 
   /// Price of one hauling helper (platform_config.hauling_helper_fee).
+  /// Unpaid cancellation / no-show fees the signed-in customer still owes
+  /// (web sql/036 my_unpaid_fees). New bookings are refused until they're
+  /// taken from the wallet, which happens automatically on a top-up.
+  Future<double> fetchUnpaidFees() async {
+    final owed = await _supabase.rpc('my_unpaid_fees');
+    return (owed as num?)?.toDouble() ?? 0;
+  }
+
   Future<double> fetchHaulingHelperFee() async {
     try {
       final row = await _supabase.from('platform_config').select('hauling_helper_fee').maybeSingle();

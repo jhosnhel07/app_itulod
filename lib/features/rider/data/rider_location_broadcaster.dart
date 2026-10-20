@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -95,13 +96,31 @@ class RiderLocationBroadcaster {
     _stopIfIdle();
   }
 
+  /// On Android the stream runs as a foreground service with a "you're
+  /// online" notification, so location keeps going to customers (and new-job
+  /// alerts keep arriving — AppAlerts) while the app is in the background.
+  /// It stops with the stream when the rider goes offline and has no job.
+  static LocationSettings get _settings {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return AndroidSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10,
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: "iTULOD — you're online",
+          notificationText: 'Sharing your location so customers can find and track you. Go offline to stop.',
+          notificationChannelName: 'Rider location',
+          enableWakeLock: true,
+          setOngoing: true,
+        ),
+      );
+    }
+    return const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 10);
+  }
+
   void _ensureStream() {
     if (_sub != null) return;
     _sub = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 10,
-      ),
+      locationSettings: _settings,
     ).listen(_onPosition, onError: (Object e, StackTrace s) {
       AppLog.warn('rider position stream error', e, s);
     });

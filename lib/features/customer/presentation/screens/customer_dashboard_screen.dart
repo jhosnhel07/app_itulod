@@ -4,6 +4,7 @@ import '../../../../shared/widgets/theme_toggle_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
+import '../../../../core/services/app_alerts.dart';
 import '../../../../core/supabase/realtime_refresh.dart';
 import '../../../../shared/screens/profile_screen.dart';
 import '../../../../shared/widgets/avatar_widget.dart';
@@ -29,9 +30,24 @@ class _CustomerDashboardScreenState
 
   static const _titles = ['Home', 'My Bookings', 'Notifications', 'Profile'];
 
+  /// Stopped when the dashboard goes (log out) — ref can't be used in dispose.
+  AppAlerts? _alerts;
+
+  @override
+  void dispose() {
+    _alerts?.stop();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
+    // Phone notifications for booking updates while the app is in the background.
+    _alerts = ref.read(appAlertsProvider);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userId = ref.read(authNotifierProvider).profile?.id;
+      if (mounted && userId != null) _alerts?.start(userId: userId);
+    });
     startRealtime(
       channelName: 'customer-dashboard',
       tables: const [
@@ -46,6 +62,7 @@ class _CustomerDashboardScreenState
         ref.invalidate(customerHistoryProvider);
         ref.invalidate(notificationsProvider);
         ref.invalidate(unreadNotificationsProvider);
+        ref.invalidate(unpaidFeesProvider);
       },
     );
     // Automatic booking expiration: catches anything the 15-minute grace
