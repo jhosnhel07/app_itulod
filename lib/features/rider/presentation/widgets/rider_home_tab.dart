@@ -10,6 +10,7 @@ import '../../../../shared/models/rider_application_model.dart';
 import '../../../../shared/widgets/status_badge.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/rider_repository.dart';
+import '../screens/rider_dashboard_screen.dart' show riderOnlineStatusProvider;
 import 'rider_earnings_tab.dart' show riderEarningsProvider;
 import 'rider_requests_tab.dart'
     show riderActiveBookingsProvider, riderRequestsProvider;
@@ -65,31 +66,16 @@ class RiderHomeTab extends ConsumerWidget {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
           children: [
+            // ── Online switch + today's earnings (web: .online-hero) ──
+            _OnlineHeroCard(
+              approved: approved,
+              earnedToday: s.earningsToday,
+              tripsToday: s.tripsToday,
+            ),
+            const SizedBox(height: 18),
             _FloatCard(),
             const SizedBox(height: 18),
             // ── Snapshot stats ──────────────────────────────────
-            Row(
-              children: [
-                Expanded(
-                  child: _StatTile(
-                    label: "Today's earnings",
-                    value: Formatters.currency(s.earningsToday),
-                    icon: Icons.payments_rounded,
-                    tint: AppColors.success,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _StatTile(
-                    label: 'Trips today',
-                    value: '${s.tripsToday}',
-                    icon: Icons.route_rounded,
-                    tint: AppColors.primary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
@@ -403,6 +389,127 @@ class _StatTile extends StatelessWidget {
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(value, style: AppTypography.h2.copyWith(fontSize: 20)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The rider's main switch: big Online/Offline toggle that turns the card
+/// green, with today's earnings and trips (web: .online-hero in rider.js).
+class _OnlineHeroCard extends ConsumerWidget {
+  final bool approved;
+  final double earnedToday;
+  final int tripsToday;
+
+  const _OnlineHeroCard({required this.approved, required this.earnedToday, required this.tripsToday});
+
+  static const _green = Color(0xFF1A9D63);
+  static const _greenDark = Color(0xFF12784B);
+
+  Future<void> _toggle(BuildContext context, WidgetRef ref, bool value) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final problem = await ref.read(riderOnlineStatusProvider.notifier).setOnline(value);
+    if (problem != null) {
+      messenger.showSnackBar(SnackBar(content: Text(problem), backgroundColor: AppColors.danger));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final status = ref.watch(riderOnlineStatusProvider);
+    final online = status.valueOrNull ?? false;
+    final busy = status.isLoading;
+    final onColor = online ? Colors.white : AppColors.ink;
+    final subColor = online ? Colors.white.withValues(alpha: 0.85) : AppColors.neutral500;
+    final subtitle = !approved
+        ? 'Available once an admin approves your application.'
+        : online
+            ? 'Customers nearby can see you, and new jobs for your vehicle come in.'
+            : 'Go online so nearby customers can see you before they book.';
+
+    Widget stat(String label, String value) => Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: online ? Colors.white.withValues(alpha: 0.14) : AppColors.background,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: AppTypography.caption.copyWith(color: subColor, fontSize: 11.5)),
+                const SizedBox(height: 2),
+                Text(value, style: AppTypography.h3.copyWith(color: onColor)),
+              ],
+            ),
+          ),
+        );
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      padding: const EdgeInsets.fromLTRB(18, 16, 14, 16),
+      decoration: BoxDecoration(
+        color: online ? null : AppColors.surface,
+        gradient: online
+            ? const LinearGradient(colors: [_green, _greenDark], begin: Alignment.topLeft, end: Alignment.bottomRight)
+            : null,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: online ? Colors.transparent : AppColors.cardBorder),
+        boxShadow: AppColors.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: online ? const Color(0xFFB8F5D6) : AppColors.neutral300,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(online ? "You're online" : "You're offline",
+                            style: AppTypography.h3.copyWith(color: onColor, fontSize: 17)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(subtitle, style: AppTypography.caption.copyWith(color: subColor, height: 1.4)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Semantics(
+                label: online ? 'Go offline' : 'Go online',
+                child: Transform.scale(
+                  scale: 1.25,
+                  child: Switch(
+                    value: online,
+                    onChanged: (!approved || busy) ? null : (v) => _toggle(context, ref, v),
+                    activeThumbColor: Colors.white,
+                    activeTrackColor: Colors.white.withValues(alpha: 0.35),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              stat('Earned today', Formatters.currency(earnedToday)),
+              const SizedBox(width: 10),
+              stat('Trips today', '$tripsToday'),
+            ],
           ),
         ],
       ),

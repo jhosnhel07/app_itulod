@@ -113,9 +113,6 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
         : '$label name should be letters only';
   }
 
-  static String? _nullIfEmpty(String value) =>
-      value.trim().isEmpty ? null : value;
-
   /// Sender and receiver share the web-style map ("1 Set Pickup /
   /// 2 Set Drop-off").
   Future<void> _pickLocation({required bool isSender}) async {

@@ -185,6 +185,10 @@ class CustomerHomeTab extends ConsumerWidget {
             const SizedBox(height: 16),
           ],
 
+          // ── Services: start any booking in one tap (web: .service-tiles)
+          const _ServiceTiles(),
+          const SizedBox(height: 18),
+
           // ── Lifetime stats ──────────────────────────────────────
           Row(
             children: [
@@ -217,49 +221,6 @@ class CustomerHomeTab extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 24),
-
-          // ── Services ────────────────────────────────────────────
-          Row(
-            children: [
-              Text('Our Services', style: AppTypography.h3),
-              const Spacer(),
-              Text('Choose one to start', style: AppTypography.caption),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _ServiceCard(
-            title: 'Book a Ride',
-            subtitle: 'Reliable point-to-point transportation',
-            icon: Icons.directions_car_rounded,
-            color: AppColors.primary,
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const BookRideScreen())),
-          ),
-          _ServiceCard(
-            title: 'Food Delivery',
-            subtitle: 'Order from your favourite local restaurants',
-            icon: Icons.restaurant_rounded,
-            color: AppColors.secondary,
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const BookFoodScreen())),
-          ),
-          _ServiceCard(
-            title: 'Send Parcel',
-            subtitle: 'Fast, secure door-to-door parcel delivery',
-            icon: Icons.inventory_2_rounded,
-            color: AppColors.success,
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const BookParcelScreen())),
-          ),
-          _ServiceCard(
-            title: 'Hauling',
-            subtitle: 'Move furniture, appliances and big loads',
-            icon: Icons.local_shipping_rounded,
-            color: AppColors.primaryDark,
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const BookHaulingScreen())),
-          ),
-          const SizedBox(height: 18),
 
           // ── Warm blush info panel ───────────────────────────────
           Container(
@@ -551,62 +512,90 @@ class _StatTile extends StatelessWidget {
   }
 }
 
-class _ServiceCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
+/// Ride · Food · Parcel · Hauling — one tap to each booking form, near the
+/// top of the home screen (same colours as the web's .service-tiles).
+class _ServiceTiles extends StatelessWidget {
+  const _ServiceTiles();
+
+  @override
+  Widget build(BuildContext context) {
+    void open(Widget screen) => Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+    return Row(
+      children: [
+        _ServiceTile(
+          label: 'Ride',
+          icon: Icons.directions_car_rounded,
+          color: const Color(0xFF2196F3),
+          onTap: () => open(const BookRideScreen()),
+        ),
+        const SizedBox(width: 10),
+        _ServiceTile(
+          label: 'Food',
+          icon: Icons.restaurant_rounded,
+          color: const Color(0xFFE0455F),
+          onTap: () => open(const BookFoodScreen()),
+        ),
+        const SizedBox(width: 10),
+        _ServiceTile(
+          label: 'Parcel',
+          icon: Icons.inventory_2_rounded,
+          color: const Color(0xFF1A9D63),
+          onTap: () => open(const BookParcelScreen()),
+        ),
+        const SizedBox(width: 10),
+        _ServiceTile(
+          label: 'Hauling',
+          icon: Icons.local_shipping_rounded,
+          color: const Color(0xFF0D47A1),
+          onTap: () => open(const BookHaulingScreen()),
+        ),
+      ],
+    );
+  }
+}
+
+class _ServiceTile extends StatelessWidget {
+  final String label;
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
 
-  const _ServiceCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
+  const _ServiceTile({required this.label, required this.icon, required this.color, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: AppDecorations.softCard(),
-      clipBehavior: Clip.antiAlias,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(13),
-                  decoration: AppDecorations.iconTile(color),
-                  child: Icon(icon, color: color, size: 26),
+    return Expanded(
+      child: Semantics(
+        button: true,
+        label: 'Book $label',
+        child: Container(
+          decoration: AppDecorations.softCard(),
+          clipBehavior: Clip.antiAlias,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 14, 4, 12),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 6)),
+                        ],
+                      ),
+                      child: Icon(icon, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(label, style: AppTypography.bodyBold.copyWith(fontSize: 13.5)),
+                  ],
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title,
-                          style: AppTypography.bodyBold.copyWith(fontSize: 15.5)),
-                      const SizedBox(height: 3),
-                      Text(subtitle, style: AppTypography.caption),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: AppColors.neutral100,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.chevron_right_rounded,
-                      color: AppColors.neutral500, size: 18),
-                ),
-              ],
+              ),
             ),
           ),
         ),
