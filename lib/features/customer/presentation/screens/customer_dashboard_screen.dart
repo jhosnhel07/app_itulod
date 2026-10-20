@@ -67,7 +67,7 @@ class _CustomerDashboardScreenState
     final tabs = [
       const CustomerHomeTab(),
       const CustomerBookingsTab(),
-      const NotificationsTab(),
+      NotificationsTab(onOpenBookings: () => setState(() => _index = 1)),
       const ProfileScreen(),
     ];
 

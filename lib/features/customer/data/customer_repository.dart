@@ -790,6 +790,11 @@ class CustomerRepository {
     return (response as List).length;
   }
 
+  /// Marks one notification read (opened from the Notifications tab).
+  Future<void> markNotificationRead(String id) async {
+    await _supabase.from('notifications').update({'is_read': true}).eq('id', id);
+  }
+
   Future<void> markNotificationsRead(String userId) async {
     await _supabase
         .from('notifications')
