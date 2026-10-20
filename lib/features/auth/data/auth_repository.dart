@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/services/push_service.dart';
 import '../../../core/supabase/supabase_client.dart';
 import '../../../core/utils/app_log.dart';
 import '../../../shared/models/profile_model.dart';
@@ -247,6 +248,9 @@ class AuthRepository {
   }
 
   Future<void> signOut() async {
+    // Stop phone pushes for this account first — the server only lets the
+    // signed-in user remove their own device token.
+    await PushService.unregisterCurrentDevice();
     await _supabase.auth.signOut();
   }
 }

@@ -48,3 +48,6 @@ app.*.map.json
 .env
 supabase/.env
 supabase/.temp/
+
+# Firebase config for this app (project "itulod") — kept local, like the signing key.
+android/app/google-services.json

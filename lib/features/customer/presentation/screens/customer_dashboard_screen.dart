@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/services/app_alerts.dart';
+import '../../../../core/services/push_service.dart';
 import '../../../../core/supabase/realtime_refresh.dart';
 import '../../../../shared/screens/profile_screen.dart';
 import '../../../../shared/widgets/avatar_widget.dart';
@@ -46,7 +47,11 @@ class _CustomerDashboardScreenState
     _alerts = ref.read(appAlertsProvider);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userId = ref.read(authNotifierProvider).profile?.id;
-      if (mounted && userId != null) _alerts?.start(userId: userId);
+      if (mounted && userId != null) {
+        _alerts?.start(userId: userId);
+        // Push to this phone, even with the app closed (Firebase).
+        ref.read(pushServiceProvider).register().then((ok) => _alerts?.pushActive = ok);
+      }
     });
     startRealtime(
       channelName: 'customer-dashboard',

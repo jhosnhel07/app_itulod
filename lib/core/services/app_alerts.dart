@@ -15,22 +15,17 @@ final appAlertsProvider = Provider<AppAlerts>((ref) {
   return alerts;
 });
 
-/// Phone notifications for what happens while iTULOD isn't on screen.
+/// Fallback phone notifications for when push (PushService / Firebase) isn't
+/// available on this phone — e.g. no Google Play services. Each new row in
+/// `notifications` for this user (rider accepted, trip completed, refund, new
+/// job request…) is shown while the app is running in the background.
 ///
-/// * Everyone: each new row in \`notifications\` for this user (a rider
-///   accepted, trip completed, refund, tip, application approved…).
-/// * Online riders: new ride / food / parcel requests they can take — the
-///   read policies only deliver jobs matching their vehicle (sql/033).
-///   Hauling riders already get a "New hauling job" notification row.
+/// With push working, Firebase shows the same notifications (even with the
+/// app closed) and this stays quiet, so nothing appears twice. New-job alerts
+/// are notification rows too (web sql/037). It also creates the "Booking
+/// updates" channel that Firebase pushes use.
 ///
-/// Comes from Supabase Realtime, so it works while the app is running —
-/// in the foreground or in the background. An Online rider's app keeps
-/// running in the background (the location foreground service), so riders
-/// keep getting new-job alerts with the app minimised. Alerts for a fully
-/// closed app would need push (Firebase Cloud Messaging), which isn't set up.
-///
-/// While the app is on screen nothing is shown here — the screens already
-/// update live.
+/// While the app is on screen nothing is shown — the screens update live.
 class AppAlerts with WidgetsBindingObserver {
   static const _channelId = 'itulod_updates';
   static const _channelName = 'Booking updates';
@@ -42,8 +37,9 @@ class AppAlerts with WidgetsBindingObserver {
   int _nextId = 1;
   AppLifecycleState _lifecycle = AppLifecycleState.resumed;
 
-  /// Riders only get new-job alerts while Online.
-  bool riderOnline = false;
+  /// Set once Firebase push is registered for this phone — then this stays
+  /// quiet (Firebase shows the same notifications).
+  bool pushActive = false;
 
   Future<void> _init() async {
     if (_ready || kIsWeb) return;
@@ -67,8 +63,8 @@ class AppAlerts with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) => _lifecycle = state;
 
-  /// Starts listening for [userId]. [rider]: also alert on new jobs.
-  Future<void> start({required String userId, bool rider = false}) async {
+  /// Starts listening for [userId].
+  Future<void> start({required String userId}) async {
     if (kIsWeb) return;
     if (_userId == userId && _channel != null) return;
     await stop();
@@ -79,8 +75,9 @@ class AppAlerts with WidgetsBindingObserver {
       return;
     }
     _userId = userId;
-
-    var channel = SupabaseConfig.client.channel('alerts-$userId').onPostgresChanges(
+    _channel = SupabaseConfig.client
+        .channel('alerts-$userId')
+        .onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',
           table: 'notifications',
@@ -89,43 +86,12 @@ class AppAlerts with WidgetsBindingObserver {
             final row = payload.newRecord;
             _show(row['title']?.toString() ?? 'iTULOD', row['message']?.toString() ?? '');
           },
-        );
-    if (rider) {
-      for (final (table, label) in const [
-        ('transport_bookings', 'ride'),
-        ('food_deliveries', 'food delivery'),
-        ('parcel_deliveries', 'parcel delivery'),
-      ]) {
-        channel = channel.onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: table,
-          callback: (payload) => _newJob(label, payload.newRecord),
-        );
-      }
-    }
-    _channel = channel.subscribe();
+        )
+        .subscribe();
   }
-
-  void _newJob(String label, Map<String, dynamic> row) {
-    if (!riderOnline || row['rider_id'] != null || row['status'] != 'pending') return;
-    // A ride booked for later only shows in Requests 30 min before pickup.
-    final scheduled = DateTime.tryParse(row['scheduled_for']?.toString() ?? '');
-    if (scheduled != null && scheduled.isAfter(DateTime.now().add(const Duration(minutes: 30)))) return;
-    final from = (row['pickup_address'] ?? row['sender_address'] ?? row['restaurant_name'] ?? '').toString();
-    final to = (row['destination_address'] ?? row['delivery_address'] ?? row['receiver_address'] ?? '').toString();
-    final fare = num.tryParse('${row['estimated_fare']}');
-    final parts = [
-      if (from.isNotEmpty && to.isNotEmpty) '${_short(from)} → ${_short(to)}',
-      if (fare != null) 'est. ₱${fare.toStringAsFixed(2)}',
-    ];
-    _show('New $label request', parts.isEmpty ? 'Open iTULOD to see it.' : parts.join(' · '));
-  }
-
-  static String _short(String s) => s.length > 32 ? '${s.substring(0, 31)}…' : s;
 
   Future<void> _show(String title, String body) async {
-    if (!_ready || _lifecycle == AppLifecycleState.resumed) return;
+    if (!_ready || pushActive || _lifecycle == AppLifecycleState.resumed) return;
     try {
       await _plugin.show(
         id: _nextId++,
