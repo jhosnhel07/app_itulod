@@ -99,7 +99,7 @@ void main() {
 
     await tester.enterText(fieldNamed('Full Name'), 'Juan dela Cruz');
     await tester.enterText(fieldNamed('Phone Number'), '09171234567');
-    await tester.enterText(fieldNamed('Email Address'), 'juan@example.com');
+    await tester.enterText(fieldNamed('Email Address'), 'juan@gmail.com');
     await tester.enterText(fieldNamed('Password'), 'Password1!');
     await tester.enterText(fieldNamed('Confirm Password'), 'Password1!');
     await tester.pumpAndSettle();

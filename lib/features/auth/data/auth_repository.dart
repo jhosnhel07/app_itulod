@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/constants/app_strings.dart';
 import '../../../core/services/push_service.dart';
 import '../../../core/supabase/supabase_client.dart';
 import '../../../core/utils/app_log.dart';
@@ -223,7 +224,12 @@ class AuthRepository {
     if (emailOrUsername.trim().toLowerCase() == 'admin') {
       throw const AuthException('The system admin account cannot be reset via email.');
     }
-    await _supabase.auth.resetPasswordForEmail(email);
+    // Open the web's "Set a new password" page from the email, the same
+    // page the website's Forgot password uses (js/auth.js).
+    await _supabase.auth.resetPasswordForEmail(
+      email,
+      redirectTo: '${AppStrings.webBaseUrl}/reset-password.html',
+    );
   }
 
   /// Asks the `check-email` Edge Function (service role, deployed with

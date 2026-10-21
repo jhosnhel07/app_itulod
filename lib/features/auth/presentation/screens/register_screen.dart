@@ -12,6 +12,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_strings.dart';
 import '../../../../core/constants/vehicle_catalog.dart';
 import '../../../../core/utils/validators.dart';
+import '../../../../shared/widgets/password_checklist.dart';
 import '../../../../shared/models/profile_model.dart';
 import '../../data/auth_repository.dart';
 import '../providers/auth_provider.dart';
@@ -43,7 +44,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _agreedToTerms = false;
-  int _passwordScore = 0;
 
   bool _isCheckingEmail = false;
   bool? _isEmailAvailable;
@@ -117,15 +117,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     );
   }
 
-  int _scorePassword(String pw) {
-    var score = 0;
-    if (pw.length >= 6) score++;
-    if (pw.length >= 10) score++;
-    if (RegExp(r'[A-Z]').hasMatch(pw) && RegExp(r'[a-z]').hasMatch(pw)) score++;
-    if (RegExp(r'[0-9]').hasMatch(pw) && RegExp(r'[^A-Za-z0-9]').hasMatch(pw)) score++;
-    return score;
-  }
-
   /// [face]: a profile photo — opens the front camera and keeps it smaller.
   /// Documents are capped too, so phone photos upload on weak signal.
   Future<void> _pickFile(void Function(File file) assign, {bool face = false}) async {
@@ -180,7 +171,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   void _onEmailChanged(String val) {
-    if (val.trim().isEmpty || Validators.email(val) != null) {
+    if (val.trim().isEmpty || Validators.gmail(val) != null) {
       if (_isCheckingEmail || _isEmailAvailable != null) {
         setState(() {
           _isCheckingEmail = false;
@@ -294,7 +285,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           fullName: _fullNameController.text.trim(),
           email: _emailController.text.trim(),
           password: _passwordController.text,
-          phone: _phoneController.text.trim(),
+          phone: Validators.normalizePhone(_phoneController.text),
           photo: _customerPhoto,
         );
 
@@ -326,7 +317,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           fullName: _fullNameController.text.trim(),
           email: _emailController.text.trim(),
           password: _passwordController.text,
-          phone: _phoneController.text.trim(),
+          phone: Validators.normalizePhone(_phoneController.text),
           vehicleType: _selectedVehicleType,
           vehiclePlate: _vehiclePlateController.text.trim(),
           vehicleModel: _selectedVehicleModel ?? '',
@@ -611,12 +602,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           ),
           AuthTextField(
             label: 'Email Address',
-            hint: 'juandelacruz@email.com',
+            hint: 'juandelacruz@gmail.com',
             icon: FontAwesomeIcons.envelope,
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
-            validator: Validators.email,
+            validator: Validators.gmail,
             onChanged: _onEmailChanged,
             bottomPadding: (_isCheckingEmail || _isEmailAvailable != null) ? 0 : 18,
           ),
@@ -640,9 +631,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             showPasswordToggle: true,
             onToggleObscure: () => setState(() => _obscurePassword = !_obscurePassword),
             validator: Validators.password,
-            onChanged: (v) => setState(() => _passwordScore = _scorePassword(v)),
+            onChanged: (_) => setState(() {}),
+            bottomPadding: 0,
           ),
-          if (_passwordController.text.isNotEmpty) _passwordStrength(),
+          PasswordChecklist(password: _passwordController.text),
           AuthTextField(
             label: 'Confirm Password',
             hint: 'Repeat password',
@@ -712,45 +704,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 ),
               ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _passwordStrength() {
-    const labels = ['', 'Weak', 'Fair', 'Good', 'Strong'];
-    const colors = [
-      Color(0xFFE5E7EB),
-      Color(0xFFEF4444),
-      Color(0xFFF59E0B),
-      Color(0xFF3B82F6),
-      Color(0xFF22C55E),
-    ];
-    final color = colors[_passwordScore];
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: List.generate(4, (i) {
-              return Expanded(
-                child: Container(
-                  margin: EdgeInsets.only(right: i == 3 ? 0 : 4),
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: i < _passwordScore ? color : const Color(0xFFE5E7EB),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-              );
-            }),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            labels[_passwordScore],
-            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500, color: color),
           ),
         ],
       ),

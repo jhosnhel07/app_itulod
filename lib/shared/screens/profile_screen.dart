@@ -7,6 +7,8 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../core/theme/app_decorations.dart';
 import '../../core/utils/app_log.dart';
+import '../../core/utils/validators.dart';
+import '../widgets/password_checklist.dart';
 import '../widgets/app_button.dart';
 import '../widgets/app_confirm_dialog.dart';
 import '../widgets/app_text_field.dart';
@@ -106,13 +108,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final profile = ref.read(authNotifierProvider).profile;
     if (profile == null) return;
 
+    // Optional, but when given it must be a PH mobile number (web: same check).
+    final phoneText = _phoneController.text.trim();
+    if (phoneText.isNotEmpty && Validators.phone(phoneText) != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(Validators.phone(phoneText)!), backgroundColor: AppColors.danger),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
     try {
       final repo = ref.read(customerRepositoryProvider);
       var updated = await repo.updateProfile(
         profile: profile,
         fullName: _nameController.text,
-        phone: _phoneController.text,
+        phone: phoneText.isEmpty ? '' : Validators.normalizePhone(phoneText),
       );
 
       var sentForReview = false;
@@ -175,10 +186,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return;
     }
 
-    if (newPassword.length < 8) {
+    final problem = Validators.password(newPassword);
+    if (problem != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(problem), backgroundColor: AppColors.danger),
+      );
+      return;
+    }
+    if (newPassword == oldPassword) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('Password must be at least 8 characters'),
+            content: Text('Choose a password different from your current one'),
             backgroundColor: AppColors.danger),
       );
       return;
@@ -186,9 +204,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     setState(() => _saving = true);
     try {
-      // In Supabase, the user just updates their password if they are logged in.
-      // There's no need to verify the old password through a specific RPC if we
-      // just call update. We can check session to ensure they're logged in.
+      // Check the current password first (a fresh sign-in to the same
+      // account), so someone holding an unlocked phone can't change it.
+      // Web: wireChangePasswordForm in js/dashboard-common.js.
+      final email = SupabaseConfig.client.auth.currentUser?.email ?? '';
+      try {
+        await SupabaseConfig.client.auth.signInWithPassword(email: email, password: oldPassword);
+      } on AuthException {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Your current password is incorrect'),
+                backgroundColor: AppColors.danger),
+          );
+          setState(() => _saving = false);
+        }
+        return;
+      }
       await SupabaseConfig.client.auth.updateUser(
         UserAttributes(password: newPassword),
       );
@@ -567,8 +599,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     controller: _newPasswordController,
                     obscureText: true,
                     hint: 'At least 8 characters',
+                    onChanged: (_) => setState(() {}),
                   ),
-                  const SizedBox(height: 14),
+                  PasswordChecklist(password: _newPasswordController.text),
                   AppTextField(
                     label: 'Confirm new password',
                     controller: _confirmPasswordController,
