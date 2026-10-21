@@ -126,7 +126,7 @@ class AdminDashboardScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 12),
               AppButton(
-                text: 'Sign Out',
+                text: 'Log Out',
                 type: AppButtonType.outline,
                 onPressed: () => ref.read(authNotifierProvider.notifier).signOut(),
               ),

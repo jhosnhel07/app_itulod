@@ -89,7 +89,7 @@ class CustomerHomeScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 32),
               AppButton(
-                text: 'Sign Out',
+                text: 'Log Out',
                 type: AppButtonType.outline,
                 onPressed: () => ref.read(authNotifierProvider.notifier).signOut(),
               ),

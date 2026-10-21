@@ -636,15 +636,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
           const SizedBox(height: 12),
           AppButton(
-            text: 'Sign Out',
+            text: 'Log Out',
             type: AppButtonType.outline,
             icon: Icons.logout,
             onPressed: () async {
               final confirmed = await showAppConfirm(
                 context,
-                title: 'Sign out?',
+                title: 'Log out?',
                 message: 'You will need to log in again.',
-                confirmText: 'Sign out',
+                confirmText: 'Log out',
                 icon: Icons.logout_rounded,
               );
               if (confirmed) {
