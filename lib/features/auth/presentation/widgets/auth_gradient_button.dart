@@ -123,9 +123,9 @@ class AuthBackButton extends StatelessWidget {
           // Row, so it is laid out with an unbounded width — a full-width
           // minimumSize here would force an infinite width and fail layout.
           minimumSize: const Size(0, 50),
-          backgroundColor: const Color(0xFFF1F5F9),
+          backgroundColor: AppColors.pick(0xFFF1F5F9, 0xFF1C2839),
           foregroundColor: AppColors.slate,
-          side: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
+          side: BorderSide(color: AppColors.pick(0xFFE5E7EB, 0xFF2A384C), width: 1.5),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           padding: const EdgeInsets.symmetric(horizontal: 20),
         ),

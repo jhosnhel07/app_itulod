@@ -11,6 +11,8 @@ import '../../../../core/constants/app_typography.dart';
 import '../../../../core/services/route_service.dart';
 import '../../../../core/utils/fare_estimator.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../../core/utils/phone_input_formatter.dart';
+import '../../../../core/utils/validators.dart';
 import '../../../../shared/models/vehicle_model.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/customer_repository.dart';
@@ -173,10 +175,10 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
             customerId: profile.id,
             vehicle: _vehicle!,
             senderName: _senderNameController.text,
-            senderPhone: _senderPhoneController.text,
+            senderPhone: Validators.normalizePhone(_senderPhoneController.text),
             senderAddress: _senderAddressController.text,
             receiverName: _receiverNameController.text,
-            receiverPhone: _receiverPhoneController.text,
+            receiverPhone: Validators.normalizePhone(_receiverPhoneController.text),
             receiverAddress: _receiverAddressController.text,
             parcelSize: _parcelSize,
             parcelWeight: double.tryParse(_weightController.text),
@@ -259,6 +261,7 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
                       TextFormField(
                         controller: _senderPhoneController,
                         keyboardType: TextInputType.phone,
+                        inputFormatters: const [PhPhoneInputFormatter()],
                         decoration:
                             const InputDecoration(hintText: 'Contact number (09XX XXX XXXX)'),
                         validator: _optionalMobile,
@@ -287,6 +290,7 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
                       TextFormField(
                         controller: _receiverPhoneController,
                         keyboardType: TextInputType.phone,
+                        inputFormatters: const [PhPhoneInputFormatter()],
                         decoration:
                             const InputDecoration(hintText: 'Contact number (09XX XXX XXXX)'),
                         validator: _optionalMobile,

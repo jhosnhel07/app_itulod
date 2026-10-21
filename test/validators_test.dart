@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:app_itulod/core/utils/validators.dart';
+import 'package:app_itulod/core/utils/phone_input_formatter.dart';
+import 'package:flutter/services.dart';
 
 // Same cases as the web's test/unit/password-rule.test.mjs.
 void main() {
@@ -37,5 +39,19 @@ void main() {
     expect(Validators.phone('0817 123 4567'), isNotNull);
     expect(Validators.phone('0917 123 456'), isNotNull);
     expect(Validators.normalizePhone('0917 123 4567'), '09171234567');
+  });
+
+  test('phone formatter: 0917 123 4567 as you type (web: formatPhoneMobile)', () {
+    expect(PhPhoneInputFormatter.format('09171234567'), '0917 123 4567');
+    expect(PhPhoneInputFormatter.format('0917'), '0917');
+    expect(PhPhoneInputFormatter.format('09171'), '0917 1');
+    expect(PhPhoneInputFormatter.format('9171234567'), '0917 123 4567');
+    expect(PhPhoneInputFormatter.format('0917-123-4567 99'), '0917 123 4567');
+    expect(PhPhoneInputFormatter.format('abc'), '');
+    const f = PhPhoneInputFormatter();
+    final v = f.formatEditUpdate(TextEditingValue.empty,
+        const TextEditingValue(text: '0917123', selection: TextSelection.collapsed(offset: 7)));
+    expect(v.text, '0917 123');
+    expect(v.selection.end, 8);
   });
 }

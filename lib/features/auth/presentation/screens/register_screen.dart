@@ -12,6 +12,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_strings.dart';
 import '../../../../core/constants/vehicle_catalog.dart';
 import '../../../../core/utils/validators.dart';
+import '../../../../core/utils/phone_input_formatter.dart';
 import '../../../../shared/widgets/password_checklist.dart';
 import '../../../../shared/models/profile_model.dart';
 import '../../data/auth_repository.dart';
@@ -597,6 +598,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             icon: FontAwesomeIcons.phone,
             controller: _phoneController,
             keyboardType: TextInputType.phone,
+            inputFormatters: const [PhPhoneInputFormatter()],
             textInputAction: TextInputAction.next,
             validator: Validators.phone,
           ),
@@ -651,7 +653,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             decoration: BoxDecoration(
               color: AppColors.inputFill,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE5E7EB), width: 1.5),
+              border: Border.all(color: AppColors.pick(0xFFE5E7EB, 0xFF2A384C), width: 1.5),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -739,10 +741,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
                   decoration: BoxDecoration(
-                    color: selected ? const Color(0xFFEFF4FF) : const Color(0xFFFAFAFA),
+                    color: selected ? AppColors.pick(0xFFEFF4FF, 0xFF102540) : AppColors.pick(0xFFFAFAFA, 0xFF172131),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: selected ? AppColors.brandBlue : const Color(0xFFE5E7EB),
+                      color: selected ? AppColors.brandBlue : AppColors.pick(0xFFE5E7EB, 0xFF2A384C),
                       width: 2,
                     ),
                     boxShadow: selected
@@ -823,11 +825,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
+                      borderSide: BorderSide(color: AppColors.pick(0xFFE5E7EB, 0xFF2A384C), width: 1.5),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
+                      borderSide: BorderSide(color: AppColors.pick(0xFFE5E7EB, 0xFF2A384C), width: 1.5),
                     ),
                   ),
                 ),
@@ -935,7 +937,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           decoration: BoxDecoration(
             color: AppColors.inputFill,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.pick(0xFFE2E8F0, 0xFF243246)),
           ),
           child: Column(
             children: rows
@@ -959,7 +961,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           child: Text(
                             row.$2,
                             textAlign: TextAlign.right,
-                            style: GoogleFonts.inter(fontSize: 13.1, color: const Color(0xFF475569)),
+                            style: GoogleFonts.inter(fontSize: 13.1, color: AppColors.pick(0xFF475569, 0xFFA9B5C4)),
                           ),
                         ),
                       ],
@@ -1186,9 +1188,9 @@ class _RoleCard extends StatelessWidget {
         duration: const Duration(milliseconds: 220),
         padding: const EdgeInsets.fromLTRB(12, 28, 12, 20),
         decoration: BoxDecoration(
-          color: const Color(0xFFFAFAFA),
+          color: AppColors.pick(0xFFFAFAFA, 0xFF172131),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: selected ? accent : const Color(0xFFE5E7EB), width: 2),
+          border: Border.all(color: selected ? accent : AppColors.pick(0xFFE5E7EB, 0xFF2A384C), width: 2),
           boxShadow: selected
               ? [
                   BoxShadow(color: accent.withValues(alpha: 0.12), blurRadius: 0, spreadRadius: 4),
@@ -1269,9 +1271,9 @@ class _SignupPhotoPicker extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFDFC),
+        color: AppColors.pick(0xFFFFFDFC, 0xFF172131),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFECDEDD), width: 1.5),
+        border: Border.all(color: AppColors.pick(0xFFECDEDD, 0xFF3A2630), width: 1.5),
       ),
       child: Row(
         children: [
@@ -1282,8 +1284,8 @@ class _SignupPhotoPicker extends StatelessWidget {
               height: 60,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFFE8F3FE),
-                border: Border.all(color: const Color(0xFFCFE5FB), width: 2),
+                color: AppColors.pick(0xFFE8F3FE, 0xFF102540),
+                border: Border.all(color: AppColors.pick(0xFFCFE5FB, 0xFF2B5C92), width: 2),
                 image: picked != null ? DecorationImage(image: FileImage(picked), fit: BoxFit.cover) : null,
               ),
               alignment: Alignment.center,
@@ -1310,7 +1312,7 @@ class _SignupPhotoPicker extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF3EEED),
+                          color: AppColors.pick(0xFFF3EEED, 0xFF1C2839),
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text('Optional',
@@ -1369,10 +1371,10 @@ class _UploadZone extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 130),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 22),
         decoration: BoxDecoration(
-          color: hasFile ? const Color(0xFFF0FDF4) : const Color(0xFFFAFAFA),
+          color: hasFile ? AppColors.pick(0xFFF0FDF4, 0xFF0F2A1F) : AppColors.pick(0xFFFAFAFA, 0xFF172131),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: hasFile ? AppColors.success : const Color(0xFFE5E7EB),
+            color: hasFile ? AppColors.success : AppColors.pick(0xFFE5E7EB, 0xFF2A384C),
             width: 2,
             style: hasFile ? BorderStyle.solid : BorderStyle.solid,
           ),
@@ -1403,9 +1405,9 @@ class _UploadZone extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
+                    color: AppColors.pick(0xFFEFF6FF, 0xFF102540),
                     borderRadius: BorderRadius.circular(99),
-                    border: Border.all(color: const Color(0xFFDBEAFE)),
+                    border: Border.all(color: AppColors.pick(0xFFDBEAFE, 0xFF2B5C92)),
                   ),
                   child: Text(
                     'Choose file',
@@ -1421,7 +1423,7 @@ class _UploadZone extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
+                      color: AppColors.pick(0xFFF1F5F9, 0xFF1C2839),
                       borderRadius: BorderRadius.circular(99),
                     ),
                     child: Text(

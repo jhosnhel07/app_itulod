@@ -22,6 +22,9 @@ class AppColors {
 
   static Color _pick(int light, int darkValue) => Color(dark ? darkValue : light);
 
+  /// A light/dark pair for one-off colours that have no named token here.
+  static Color pick(int light, int darkValue) => _pick(light, darkValue);
+
   // ── Primary brand palette — iTULOD Blue ────────────────────────────────
   static const Color primary = Color(0xFF2196F3);
   static const Color primaryLight = Color(0xFF64B5F6); // derived 300

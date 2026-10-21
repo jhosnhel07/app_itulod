@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -16,6 +17,7 @@ class AuthTextField extends StatelessWidget {
   final ValueChanged<String>? onChanged;
   final bool showPasswordToggle;
   final double bottomPadding;
+  final List<TextInputFormatter>? inputFormatters;
 
   const AuthTextField({
     super.key,
@@ -31,6 +33,7 @@ class AuthTextField extends StatelessWidget {
     this.onChanged,
     this.showPasswordToggle = false,
     this.bottomPadding = 18,
+    this.inputFormatters,
   });
 
   @override
@@ -54,6 +57,7 @@ class AuthTextField extends StatelessWidget {
             controller: controller,
             obscureText: obscureText,
             keyboardType: keyboardType,
+            inputFormatters: inputFormatters,
             textInputAction: textInputAction,
             validator: validator,
             onChanged: onChanged,
@@ -87,11 +91,11 @@ class AuthTextField extends StatelessWidget {
               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
+                borderSide: BorderSide(color: AppColors.pick(0xFFE5E7EB, 0xFF2A384C), width: 1.5),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
+                borderSide: BorderSide(color: AppColors.pick(0xFFE5E7EB, 0xFF2A384C), width: 1.5),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),

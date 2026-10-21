@@ -54,7 +54,7 @@ class RegisterStepIndicator extends StatelessWidget {
                                   ? _accent
                                   : active
                                       ? _accent.withValues(alpha: 0.45)
-                                      : const Color(0xFFE5E7EB),
+                                      : AppColors.pick(0xFFE5E7EB, 0xFF2A384C),
                             ),
                           ),
                         ),
@@ -67,9 +67,9 @@ class RegisterStepIndicator extends StatelessWidget {
                               ? _accent
                               : active
                                   ? _accent
-                                  : Colors.white,
+                                  : AppColors.surface,
                           border: Border.all(
-                            color: completed || active ? _accent : const Color(0xFFE5E7EB),
+                            color: completed || active ? _accent : AppColors.pick(0xFFE5E7EB, 0xFF2A384C),
                             width: 2,
                           ),
                           boxShadow: active

@@ -8,6 +8,7 @@ import '../../core/constants/app_typography.dart';
 import '../../core/theme/app_decorations.dart';
 import '../../core/utils/app_log.dart';
 import '../../core/utils/validators.dart';
+import '../../core/utils/phone_input_formatter.dart';
 import '../widgets/password_checklist.dart';
 import '../widgets/app_button.dart';
 import '../widgets/app_confirm_dialog.dart';
@@ -43,7 +44,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     super.initState();
     final profile = ref.read(authNotifierProvider).profile;
     _nameController = TextEditingController(text: profile?.fullName ?? '');
-    _phoneController = TextEditingController(text: profile?.phone ?? '');
+    _phoneController = TextEditingController(text: PhPhoneInputFormatter.format(profile?.phone ?? ''));
     _oldPasswordController = TextEditingController();
     _newPasswordController = TextEditingController();
     _confirmPasswordController = TextEditingController();
@@ -550,6 +551,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     label: 'Phone number',
                     controller: _phoneController,
                     keyboardType: TextInputType.phone,
+                    inputFormatters: const [PhPhoneInputFormatter()],
                     prefixIcon: const Icon(Icons.phone_outlined, size: 20),
                   ),
                   const SizedBox(height: 14),

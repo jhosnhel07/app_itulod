@@ -11,6 +11,8 @@ import '../../../../core/constants/app_typography.dart';
 import '../../../../core/services/route_service.dart';
 import '../../../../core/utils/fare_estimator.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../../core/utils/phone_input_formatter.dart';
+import '../../../../core/utils/validators.dart';
 import '../../../../shared/models/booking_models.dart';
 import '../../../../shared/models/vehicle_model.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -208,9 +210,9 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
             pickupPoint: _pickupPoint,
             dropoffPoint: _dropoffPoint,
             senderName: _senderName.text,
-            senderPhone: _senderPhone.text,
+            senderPhone: Validators.normalizePhone(_senderPhone.text),
             receiverName: _receiverName.text,
-            receiverPhone: _receiverPhone.text,
+            receiverPhone: Validators.normalizePhone(_receiverPhone.text),
             itemCategory: _category,
             itemDescription: _description.text,
             estimatedWeightKg: double.tryParse(_weight.text.trim()),
@@ -287,6 +289,7 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
                     TextFormField(
                       controller: _senderPhone,
                       keyboardType: TextInputType.phone,
+                      inputFormatters: const [PhPhoneInputFormatter()],
                       decoration: const InputDecoration(hintText: 'Contact number (09XX XXX XXXX)'),
                       validator: _optionalMobile,
                     ),
@@ -310,6 +313,7 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
                     TextFormField(
                       controller: _receiverPhone,
                       keyboardType: TextInputType.phone,
+                      inputFormatters: const [PhPhoneInputFormatter()],
                       decoration: const InputDecoration(hintText: 'Contact number (09XX XXX XXXX)'),
                       validator: _optionalMobile,
                     ),
