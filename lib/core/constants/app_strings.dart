@@ -2,7 +2,7 @@
   AppStrings._();
 
   static const String appName = 'iTULOD';
-  static const String appTagline = 'Intelligent Transport and Unified Logistics On-Demand Delivery';
+  static const String appTagline = 'Ilocos Transport Utility and Logistics Operation for Delivery';
   static const String appRegion = 'Ilocos Transport, Delivery & Logistics';
 
   // Auth Strings — match iTULOD web mobile copy
