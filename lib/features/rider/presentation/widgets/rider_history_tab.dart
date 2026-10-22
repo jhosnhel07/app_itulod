@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../shared/widgets/loading_skeleton.dart';
+import '../../../../shared/widgets/service_tab_bar.dart';
 import '../../../../shared/widgets/empty_state.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -48,22 +49,7 @@ class _RiderHistoryTabState extends ConsumerState<RiderHistoryTab>
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Container(
-          color: AppColors.surface,
-          child: TabBar(
-            controller: _tabController,
-            labelColor: AppColors.primary,
-            unselectedLabelColor: AppColors.neutral500,
-            indicatorColor: AppColors.primary,
-            labelStyle: AppTypography.bodyBold.copyWith(fontSize: 14),
-            tabs: const [
-              Tab(text: 'Rides'),
-              Tab(text: 'Food'),
-              Tab(text: 'Parcels'),
-              Tab(text: 'Hauling'),
-            ],
-          ),
-        ),
+        ServiceTabBar(controller: _tabController),
         Expanded(
           child: TabBarView(
             controller: _tabController,
