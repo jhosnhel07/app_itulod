@@ -130,7 +130,14 @@ class _CustomerDashboardScreenState
                     ),
                   ),
                   // Profile picture → My profile, Dark mode, Log out.
-                  AccountMenuButton(onOpenProfile: () => setState(() => _index = 3)),
+                  AccountMenuButton(
+                    onOpenProfile: () => setState(() => _index = 3),
+                    onOpenNotifications: () {
+                      setState(() => _index = 2);
+                      ref.invalidate(unreadNotificationsProvider);
+                    },
+                    unread: unreadAsync.value ?? 0,
+                  ),
                 ],
               ),
             ),

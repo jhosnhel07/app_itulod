@@ -17,22 +17,25 @@ void main() {
 
   testWidgets('profile picture opens My profile, Dark mode and Log out', (tester) async {
     var openedProfile = 0;
+    var openedNotifs = 0;
     final container = ProviderContainer();
     addTearDown(container.dispose);
     await tester.pumpWidget(UncontrolledProviderScope(
       container: container,
       child: MaterialApp(
         home: Scaffold(
-          appBar: AppBar(actions: [AccountMenuButton(onOpenProfile: () => openedProfile++)]),
+          appBar: AppBar(actions: [AccountMenuButton(onOpenProfile: () => openedProfile++, onOpenNotifications: () => openedNotifs++, unread: 3)]),
         ),
       ),
     ));
 
-    await tester.tap(find.bySemanticsLabel('Account menu'));
+    await tester.tap(find.bySemanticsLabel('Account menu, 3 unread notifications'));
     await tester.pumpAndSettle();
     expect(find.text('My profile'), findsOneWidget);
     expect(find.text('Dark mode'), findsOneWidget);
     expect(find.text('Log out'), findsOneWidget);
+    expect(find.text('Notifications'), findsOneWidget);
+    expect(find.text('3'), findsOneWidget); // unread count on the row
 
     await tester.tap(find.text('Dark mode'));
     await tester.pumpAndSettle();
@@ -42,6 +45,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(openedProfile, 1);
     expect(find.text('Dark mode'), findsNothing); // the sheet closed
+
+    await tester.tap(find.bySemanticsLabel('Account menu, 3 unread notifications'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Notifications'));
+    await tester.pumpAndSettle();
+    expect(openedNotifs, 1);
   });
 
   testWidgets('no My profile row without a profile page', (tester) async {
@@ -51,6 +60,7 @@ void main() {
     await tester.tap(find.bySemanticsLabel('Account menu'));
     await tester.pumpAndSettle();
     expect(find.text('My profile'), findsNothing);
+    expect(find.text('Notifications'), findsNothing);
     expect(find.text('Log out'), findsOneWidget);
   });
 }

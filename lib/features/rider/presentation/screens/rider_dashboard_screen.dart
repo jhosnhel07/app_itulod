@@ -338,7 +338,11 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
                     ),
                   ),
                   // Profile picture → My profile, Dark mode, Log out.
-                  AccountMenuButton(onOpenProfile: () => setState(() => _index = 5)),
+                  AccountMenuButton(
+                    onOpenProfile: () => setState(() => _index = 5),
+                    onOpenNotifications: () => _openNotifications(context),
+                    unread: unread,
+                  ),
                   if (approved) ...[
                     Text(
                       onlineAsync.valueOrNull == true ? 'Online' : 'Offline',
