@@ -199,7 +199,7 @@ class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
   @override
   Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
-    final vehiclesAsync = ref.watch(vehiclesListProvider);
+    final vehiclesAsync = ref.watch(vehiclesForServiceProvider('food'));
 
     return Scaffold(
       backgroundColor: AppColors.background,

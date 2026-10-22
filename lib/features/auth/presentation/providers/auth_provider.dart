@@ -54,6 +54,12 @@ final vehiclesListProvider = FutureProvider<List<VehicleModel>>((ref) async {
   return repo.getAvailableVehicles();
 });
 
+/// The vehicles a booking form may offer: 'ride', 'food' or 'parcel'
+/// (vehicles.services, web sql/040 — e.g. Bicycle is food only).
+final vehiclesForServiceProvider = Provider.family<AsyncValue<List<VehicleModel>>, String>((ref, service) {
+  return ref.watch(vehiclesListProvider).whenData((list) => list.where((v) => v.allows(service)).toList());
+});
+
 final haulingVehiclesProvider = FutureProvider<List<VehicleModel>>((ref) async {
   final repo = ref.watch(authRepositoryProvider);
   return repo.getHaulingVehicles();

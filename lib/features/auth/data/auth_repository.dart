@@ -22,6 +22,8 @@ class AuthRepository {
   Session? get currentSession => _supabase.auth.currentSession;
   Stream<AuthState> get authStateChanges => _supabase.auth.onAuthStateChange;
 
+  static String? _blankToNull(String? v) => (v == null || v.trim().isEmpty) ? null : v.trim();
+
   String _resolveEmail(String identifier) {
     final trimmed = identifier.trim();
     if (trimmed.toLowerCase() == 'admin') {
@@ -164,9 +166,9 @@ class AuthRepository {
     final payload = <String, dynamic>{
       'rider_id': riderId,
       'vehicle_type': vehicleType,
-      'vehicle_plate': vehiclePlate?.trim(),
+      'vehicle_plate': _blankToNull(vehiclePlate), // bicycles have none
       'vehicle_model': vehicleModel?.trim(),
-      'license_number': licenseNumber?.trim(),
+      'license_number': _blankToNull(licenseNumber), // not needed for bicycles
       'license_url': licenseUrl,
       'or_cr_url': orCrUrl,
       'status': 'pending',
@@ -193,8 +195,9 @@ class AuthRepository {
     return RiderApplicationModel.fromJson(response);
   }
 
-  /// Vehicles for rides, food and parcel — hauling vehicles are listed
-  /// separately by [getHaulingVehicles].
+  /// Vehicles for rides, food and parcel — hauling-only vehicles are listed
+  /// separately by [getHaulingVehicles]. Each form narrows this to what the
+  /// vehicle allows (vehiclesForServiceProvider).
   Future<List<VehicleModel>> getAvailableVehicles() async {
     final response = await _supabase
         .from('vehicles')
@@ -214,9 +217,11 @@ class AuthRepository {
         .from('vehicles')
         .select()
         .eq('is_available', true)
-        .eq('service', 'hauling')
         .order('base_fare');
-    return (response as List).map((json) => VehicleModel.fromJson(json)).toList();
+    return (response as List)
+        .map((json) => VehicleModel.fromJson(json))
+        .where((v) => v.allows('hauling'))
+        .toList();
   }
 
   Future<void> resetPasswordForEmail(String emailOrUsername) async {

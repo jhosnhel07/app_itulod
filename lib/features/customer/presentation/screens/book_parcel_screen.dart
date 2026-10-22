@@ -214,7 +214,7 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final vehiclesAsync = ref.watch(vehiclesListProvider);
+    final vehiclesAsync = ref.watch(vehiclesForServiceProvider('parcel'));
 
     return Scaffold(
       backgroundColor: AppColors.background,

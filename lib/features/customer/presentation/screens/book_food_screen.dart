@@ -170,7 +170,7 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
   // ── Filtering ─────────────────────────────────────────────────────────
 
   double? _cheapestFee(double km) {
-    final vehicles = ref.watch(vehiclesListProvider).valueOrNull ?? const [];
+    final vehicles = ref.watch(vehiclesForServiceProvider('food')).valueOrNull ?? const [];
     double? best;
     for (final v in vehicles) {
       final fee = FareEstimator.estimateFare(v, km);

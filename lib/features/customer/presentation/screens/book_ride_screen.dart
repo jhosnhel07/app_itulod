@@ -74,7 +74,7 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
   double? get _fare {
     final km = _distanceKm;
     if (km == null) return null;
-    final vehicles = ref.read(vehiclesListProvider).value ?? [];
+    final vehicles = ref.read(vehiclesForServiceProvider('ride')).value ?? [];
     final vehicle = _vehicle ?? (vehicles.isNotEmpty ? vehicles.first : null);
     if (vehicle == null) return null;
     return FareEstimator.estimateFare(vehicle, km);
@@ -226,7 +226,7 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
   @override
   Widget build(BuildContext context) {
     ref.watch(savedAddressesProvider);
-    final vehiclesAsync = ref.watch(vehiclesListProvider);
+    final vehiclesAsync = ref.watch(vehiclesForServiceProvider('ride'));
 
     return Scaffold(
       backgroundColor: AppColors.background,

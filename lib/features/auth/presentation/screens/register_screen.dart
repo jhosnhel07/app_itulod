@@ -53,6 +53,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   final _vehicleFormKey = GlobalKey<FormState>();
   String _selectedVehicleType = 'Motorcycle';
+
+  /// Bicycle riders deliver food only: no plate, driver's license or OR / CR
+  /// (web: register.js isBicycle / applyVehicleRequirements).
+  bool get _isBicycle => _selectedVehicleType == 'Bicycle';
   String? _selectedVehicleModel;
   final _vehiclePlateController = TextEditingController();
   final _vehicleColorController = TextEditingController();
@@ -301,8 +305,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   /// Labels of the required uploads that are still missing. NBI clearance is
   /// optional, so it is never listed here.
   List<String> get _missingDocuments => <String>[
-        if (_licensePhoto == null) "Driver's License",
-        if (_orCrPhoto == null) 'OR / CR Paper',
+        if (!_isBicycle && _licensePhoto == null) "Driver's License",
+        if (!_isBicycle && _orCrPhoto == null) 'OR / CR Paper',
         if (_selfiePhoto == null) 'Profile Photo',
         if (_vehiclePhoto == null) 'Vehicle Photo',
       ];
@@ -448,6 +452,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 orange: true,
                 trailingIcon: FontAwesomeIcons.arrowRight,
                 onPressed: () {
+                  if (!_isBicycle && _licenseNumberController.text.trim().isEmpty) {
+                    _showError("A driver's license is needed for a ${_selectedVehicleType.toLowerCase()}. "
+                        "Go Back and enter it (bicycle riders don't need one).");
+                    return;
+                  }
                   if (!_vehicleFormKey.currentState!.validate()) return;
                   setState(() => _step = 3);
                 },
@@ -619,11 +628,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           if (isRider)
             AuthTextField(
               label: "Driver's License Number",
-              hint: 'e.g. N01-23-456789',
+              hint: 'e.g. N01-23-456789 (not needed for bicycle)',
               icon: FontAwesomeIcons.idCard,
               controller: _licenseNumberController,
               textInputAction: TextInputAction.next,
-              validator: (val) => Validators.required(val, 'License number'),
+              // Checked on the Vehicle step: bicycle riders don't need one.
             ),
           AuthTextField(
             label: 'Password',
@@ -779,13 +788,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             }).toList(),
           ),
           const SizedBox(height: 24),
-          AuthTextField(
-            label: 'Plate Number',
-            hint: 'e.g. ABC 1234',
-            icon: FontAwesomeIcons.hashtag,
-            controller: _vehiclePlateController,
-            validator: (val) => Validators.required(val, 'Plate number'),
-          ),
+          if (_isBicycle)
+            const _BicycleNote()
+          else
+            AuthTextField(
+              label: 'Plate Number',
+              hint: 'e.g. ABC 1234',
+              icon: FontAwesomeIcons.hashtag,
+              controller: _vehiclePlateController,
+              validator: (val) => Validators.required(val, 'Plate number'),
+            ),
           AuthTextField(
             label: 'Vehicle Color',
             hint: 'e.g. Red',
@@ -845,6 +857,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Widget _vehicleIcon(String type, bool selected) {
     final color = selected ? AppColors.brandBlue : AppColors.iconMuted;
     switch (type) {
+      case 'Bicycle':
+        return FaIcon(FontAwesomeIcons.bicycle, size: 22, color: color);
       case 'Motorcycle':
         return FaIcon(FontAwesomeIcons.motorcycle, size: 22, color: color);
       case 'Tricycle':
@@ -867,22 +881,24 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _panelTitle(AppStrings.documentsTitle, AppStrings.documentsSub),
-        _UploadZone(
-          label: "Driver's License",
-          hint: "Upload your valid driver's license photo or PDF",
-          icon: FontAwesomeIcons.idCard,
-          file: _licensePhoto,
-          onTap: () => _pickFile((f) => _licensePhoto = f),
-        ),
-        const SizedBox(height: 14),
-        _UploadZone(
-          label: 'OR / CR Paper',
-          hint: 'Upload your official receipt or registration paper',
-          icon: FontAwesomeIcons.fileLines,
-          file: _orCrPhoto,
-          onTap: () => _pickFile((f) => _orCrPhoto = f),
-        ),
-        const SizedBox(height: 14),
+        if (!_isBicycle) ...[
+          _UploadZone(
+            label: "Driver's License",
+            hint: "Upload your valid driver's license photo or PDF",
+            icon: FontAwesomeIcons.idCard,
+            file: _licensePhoto,
+            onTap: () => _pickFile((f) => _licensePhoto = f),
+          ),
+          const SizedBox(height: 14),
+          _UploadZone(
+            label: 'OR / CR Paper',
+            hint: 'Upload your official receipt or registration paper',
+            icon: FontAwesomeIcons.fileLines,
+            file: _orCrPhoto,
+            onTap: () => _pickFile((f) => _orCrPhoto = f),
+          ),
+          const SizedBox(height: 14),
+        ],
         _UploadZone(
           label: 'Profile Photo (your face)',
           hint: 'Face clearly visible — no sunglasses, helmet or mask. Customers see this photo when you accept their booking.',
@@ -1159,6 +1175,41 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Shown instead of the plate number when the rider picks Bicycle.
+class _BicycleNote extends StatelessWidget {
+  const _BicycleNote();
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = AppColors.pick(0xFF7D3F4A, 0xFFE2A3B1);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.pick(0xFFFFF5F5, 0xFF221820),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.pick(0xFFF7D6D0, 0xFF3A2630)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: FaIcon(FontAwesomeIcons.circleInfo, size: 14, color: fg),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              "Bicycles are for food delivery only. No plate number, driver's license or OR / CR needed.",
+              style: GoogleFonts.inter(fontSize: 13, height: 1.45, color: fg),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

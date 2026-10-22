@@ -1,4 +1,12 @@
 const Map<String, List<String>> vehicleModelsByType = {
+  'Bicycle': [
+    'Mountain bike',
+    'City / commuter bike',
+    'Road bike',
+    'Folding bike',
+    'Cargo bike',
+    'Other',
+  ],
   'Motorcycle': [
     'Honda Click 125',
     'Honda Beat',
@@ -176,7 +184,10 @@ const Map<String, List<String>> vehicleModelsByType = {
   ],
 };
 
+/// Rider sign-up choices. Bicycle riders deliver food only (vehicles.services,
+/// web sql/040) and need no plate, driver's license or OR / CR.
 const List<String> vehicleTypes = [
+  'Bicycle',
   'Motorcycle',
   'Tricycle',
   'Car',
