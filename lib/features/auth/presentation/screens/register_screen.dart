@@ -14,6 +14,7 @@ import '../../../../core/constants/vehicle_catalog.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/utils/phone_input_formatter.dart';
 import '../../../../shared/widgets/password_checklist.dart';
+import '../../../../shared/widgets/tricycle_icon.dart';
 import '../../../../shared/models/profile_model.dart';
 import '../../data/auth_repository.dart';
 import '../providers/auth_provider.dart';
@@ -847,7 +848,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       case 'Motorcycle':
         return FaIcon(FontAwesomeIcons.motorcycle, size: 22, color: color);
       case 'Tricycle':
-        return Text('🛺', style: TextStyle(fontSize: 22, color: color));
+        return TricycleIcon(size: 22, color: color);
       case 'Car':
         return FaIcon(FontAwesomeIcons.car, size: 22, color: color);
       case 'SUV':

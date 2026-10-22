@@ -8,6 +8,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/map_config.dart';
 import '../../../../core/utils/app_log.dart';
 import '../../../../shared/widgets/map_widgets.dart';
+import '../../../../shared/widgets/tricycle_icon.dart';
 import '../../data/customer_repository.dart';
 
 /// Online, approved, idle riders from `get_nearby_riders()` (sql/017),
@@ -63,15 +64,15 @@ String? riderTypeForVehicle(String? name) {
 
 class _VehicleKind {
   final FaIconData? icon;
-  final String? emoji;
+  final bool tricycle; // drawn with TricycleIcon (Font Awesome has none)
   final String one;
   final String many;
-  const _VehicleKind(this.one, this.many, {this.icon, this.emoji});
+  const _VehicleKind(this.one, this.many, {this.icon, this.tricycle = false});
 }
 
 const _vehicleKinds = <String, _VehicleKind>{
   'Motorcycle': _VehicleKind('motorcycle', 'motorcycles', icon: FontAwesomeIcons.motorcycle),
-  'Tricycle': _VehicleKind('tricycle', 'tricycles', emoji: '🛺'),
+  'Tricycle': _VehicleKind('tricycle', 'tricycles', tricycle: true),
   'Car': _VehicleKind('car', 'cars', icon: FontAwesomeIcons.car),
   'SUV': _VehicleKind('SUV', 'SUVs', icon: FontAwesomeIcons.carSide),
   'Van': _VehicleKind('van', 'vans', icon: FontAwesomeIcons.vanShuttle),
@@ -258,8 +259,7 @@ class _KindIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final emoji = kind.emoji;
-    if (emoji != null) return Text(emoji, style: TextStyle(fontSize: size + 1, height: 1));
+    if (kind.tricycle) return TricycleIcon(size: size, color: color);
     return FaIcon(kind.icon, size: size, color: color);
   }
 }
