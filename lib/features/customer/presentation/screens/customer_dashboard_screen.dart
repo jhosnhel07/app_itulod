@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../shared/widgets/liquid_glass_nav_bar.dart';
-import '../../../../shared/widgets/theme_toggle_button.dart';
+import '../../../../shared/widgets/account_menu_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_icons.dart';
@@ -9,7 +9,6 @@ import '../../../../core/services/app_alerts.dart';
 import '../../../../core/services/push_service.dart';
 import '../../../../core/supabase/realtime_refresh.dart';
 import '../../../../shared/screens/profile_screen.dart';
-import '../../../../shared/widgets/avatar_widget.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../widgets/customer_bookings_tab.dart';
 import '../widgets/customer_home_tab.dart';
@@ -109,13 +108,6 @@ class _CustomerDashboardScreenState
               padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
               child: Row(
                 children: [
-                  AvatarWidget(
-                    name: profile?.fullName ?? 'Customer',
-                    url: profile?.avatarUrl,
-                    radius: 18,
-                    ring: true,
-                  ),
-                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -137,7 +129,8 @@ class _CustomerDashboardScreenState
                       ],
                     ),
                   ),
-                  const ThemeToggleButton(color: Colors.white),
+                  // Profile picture → My profile, Dark mode, Log out.
+                  AccountMenuButton(onOpenProfile: () => setState(() => _index = 3)),
                 ],
               ),
             ),

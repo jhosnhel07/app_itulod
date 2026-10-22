@@ -1,5 +1,5 @@
 ﻿import 'package:flutter/material.dart';
-import '../../../../shared/widgets/theme_toggle_button.dart';
+import '../../../../shared/widgets/account_menu_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_strings.dart';
@@ -27,16 +27,9 @@ class AdminDashboardScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Admin Console'),
         actions: [
-          const ThemeToggleButton(),
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Edit profile',
-            onPressed: () => _openProfile(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => ref.read(authNotifierProvider.notifier).signOut(),
-          ),
+          // Profile picture → My profile, Dark mode, Log out.
+          AccountMenuButton(onOpenProfile: () => _openProfile(context)),
+          const SizedBox(width: 8),
         ],
       ),
       body: SafeArea(

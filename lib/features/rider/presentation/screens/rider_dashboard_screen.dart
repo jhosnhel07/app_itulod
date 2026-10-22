@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show RealtimeChannel, PostgresChangeEvent, PostgresChangeFilter, PostgresChangeFilterType;
 import '../../../../core/supabase/supabase_client.dart';
 import '../../../../shared/widgets/liquid_glass_nav_bar.dart';
-import '../../../../shared/widgets/theme_toggle_button.dart';
+import '../../../../shared/widgets/account_menu_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_icons.dart';
@@ -11,7 +11,6 @@ import '../../../../core/constants/app_typography.dart';
 import '../../../../core/supabase/realtime_refresh.dart';
 import '../../../../shared/models/rider_application_model.dart';
 import '../../../../shared/screens/profile_screen.dart';
-import '../../../../shared/widgets/avatar_widget.dart';
 import '../../../../shared/widgets/status_badge.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../widgets/rider_earnings_tab.dart';
@@ -312,13 +311,6 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
               padding: const EdgeInsets.fromLTRB(16, 6, 12, 6),
               child: Row(
                 children: [
-                  AvatarWidget(
-                    name: profile?.fullName ?? 'Rider',
-                    url: profile?.avatarUrl,
-                    radius: 18,
-                    ring: true,
-                  ),
-                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -345,7 +337,8 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
                       child: const Icon(Icons.notifications_rounded, color: Colors.white),
                     ),
                   ),
-                  const ThemeToggleButton(color: Colors.white),
+                  // Profile picture → My profile, Dark mode, Log out.
+                  AccountMenuButton(onOpenProfile: () => setState(() => _index = 5)),
                   if (approved) ...[
                     Text(
                       onlineAsync.valueOrNull == true ? 'Online' : 'Offline',
