@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:app_itulod/core/theme/theme_controller.dart';
+import 'package:app_itulod/shared/models/profile_model.dart';
 import 'package:app_itulod/shared/widgets/account_menu_button.dart';
 
 void main() {
@@ -62,5 +63,18 @@ void main() {
     expect(find.text('My profile'), findsNothing);
     expect(find.text('Notifications'), findsNothing);
     expect(find.text('Log out'), findsOneWidget);
+  });
+
+  testWidgets('role tag names who is logged in', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: Column(children: [
+        RoleTag(role: UserRole.customer),
+        RoleTag(role: UserRole.rider),
+        RoleTag(role: UserRole.admin),
+      ])),
+    ));
+    expect(find.text('Customer'), findsOneWidget);
+    expect(find.text('Rider'), findsOneWidget);
+    expect(find.text('Admin'), findsOneWidget);
   });
 }

@@ -7,6 +7,7 @@ import '../../core/constants/app_typography.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import 'app_confirm_dialog.dart';
+import '../models/profile_model.dart';
 import 'avatar_widget.dart';
 
 /// The profile picture at the top-right of the dashboards (where the
@@ -105,9 +106,19 @@ class _AccountSheet extends ConsumerWidget {
                 title: Text(name,
                     style: AppTypography.bodyBold,
                     overflow: TextOverflow.ellipsis),
-                subtitle: Text(profile?.email ?? '',
-                    style: AppTypography.caption,
-                    overflow: TextOverflow.ellipsis),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(profile?.email ?? '',
+                        style: AppTypography.caption,
+                        overflow: TextOverflow.ellipsis),
+                    if (profile != null) ...[
+                      const SizedBox(height: 5),
+                      RoleTag(role: profile.role),
+                    ],
+                  ],
+                ),
               ),
               Divider(color: AppColors.divider, height: 12),
               if (onOpenProfile != null)
@@ -169,6 +180,28 @@ class _AccountSheet extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Who is logged in — Customer / Rider / Admin, in the same colours as the
+/// web's .badge--role-* (main.css).
+class RoleTag extends StatelessWidget {
+  final UserRole role;
+  const RoleTag({super.key, required this.role});
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, fg, bg) = switch (role) {
+      UserRole.customer => ('Customer', AppColors.pick(0xFFB06B79, 0xFFE2A3B1), AppColors.pick(0x29B06B79, 0x33E2A3B1)),
+      UserRole.rider => ('Rider', AppColors.pick(0xFF15803D, 0xFF6EE7A8), AppColors.pick(0x1A22C55E, 0x2622C55E)),
+      UserRole.admin => ('Admin', AppColors.pick(0xFF0D47A1, 0xFF90CAF9), AppColors.pick(0x1F2196F3, 0x332196F3)),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+      child: Text(label,
+          style: AppTypography.caption.copyWith(fontSize: 11.5, fontWeight: FontWeight.w700, color: fg)),
     );
   }
 }
