@@ -246,8 +246,6 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
             ],
             steps: [
               BookingStep('Where', [
-                  RidersNearYouMap(vehicleName: _vehicle?.name, origin: _senderPoint),
-                  const SizedBox(height: 16),
                   _SectionCard(
                     title: 'Sender',
                     children: [
@@ -401,6 +399,9 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
                         .toList(),
                     onChanged: (v) => setState(() => _vehicle = v),
                   ),
+                  const SizedBox(height: 12),
+                  // Riders with the chosen vehicle within 10 km of the sender
+                  RidersNearYouMap(vehicleName: _vehicle?.name, origin: _senderPoint),
                   const SizedBox(height: 16),
                   _fareBox(),
               ]),

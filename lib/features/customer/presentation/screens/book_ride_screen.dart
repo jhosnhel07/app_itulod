@@ -245,8 +245,6 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
             onChanged: () => setState(() {}),
             steps: [
               BookingStep('Where', [
-                  RidersNearYouMap(vehicleName: _vehicle?.name, origin: _pickupPoint),
-                  const SizedBox(height: 16),
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -336,6 +334,10 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
                         .toList(),
                     onChanged: (v) => setState(() => _vehicle = v),
                   ),
+                  const SizedBox(height: 12),
+                  // Riders with the chosen vehicle within 10 km of the pickup
+                  // from step 1 — updates as the vehicle changes.
+                  RidersNearYouMap(vehicleName: _vehicle?.name, origin: _pickupPoint),
                   const SizedBox(height: 16),
                   Card(
                     child: ListTile(

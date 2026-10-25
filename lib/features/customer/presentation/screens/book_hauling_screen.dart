@@ -277,8 +277,6 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
             ],
             steps: [
               BookingStep('Where', [
-                  RidersNearYouMap(vehicleName: _vehicle?.name, origin: _pickupPoint, hauling: true),
-                  const SizedBox(height: 14),
                   _section('Pickup', Icons.location_on_rounded, [
                     TextFormField(
                       controller: _senderName,
@@ -411,6 +409,9 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
                     onChanged: (v) => setState(() => _vehicle = v),
                     validator: (v) => v == null ? 'Choose a vehicle' : null,
                   ),
+                  const SizedBox(height: 12),
+                  // Drivers with the chosen vehicle within 10 km of the pickup
+                  RidersNearYouMap(vehicleName: _vehicle?.name, origin: _pickupPoint, hauling: true),
                   const SizedBox(height: 14),
                   Card(
                     child: ListTile(
