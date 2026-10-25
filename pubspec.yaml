@@ -2,7 +2,7 @@ name: app_itulod
 description: "Ilocos Transport Utility and Logistics Operation for Delivery Mobile Application"
 publish_to: 'none'
 
-version: 1.0.31+32
+version: 1.0.32+33
 
 environment:
   # flutter_map 8 requires Dart >= 3.6.0

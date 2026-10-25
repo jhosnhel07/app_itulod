@@ -7,6 +7,7 @@ import '../../../../core/constants/app_typography.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/rider_repository.dart';
 import 'rider_balance_card.dart';
+import 'rider_earnings_breakdown.dart';
 
 final riderEarningsProvider = FutureProvider.autoDispose<RiderEarnings>((ref) async {
   final repo = ref.watch(riderRepositoryProvider);
@@ -113,7 +114,11 @@ class RiderEarningsTab extends ConsumerWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+              PaymentSplitCard(records: earnings.records),
+              const SizedBox(height: 16),
+              EarningRecordsCard(records: earnings.records),
+              const SizedBox(height: 16),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),

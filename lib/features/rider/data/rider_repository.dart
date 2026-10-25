@@ -15,6 +15,8 @@ class RiderEarnings {
   final double month;
   final double averageRating;
   final List<double> last7Days; // oldest → newest
+  /// Every paid trip, newest first (web: Earnings records).
+  final List<EarningRecord> records;
 
   const RiderEarnings({
     this.today = 0,
@@ -22,7 +24,31 @@ class RiderEarnings {
     this.month = 0,
     this.averageRating = 0,
     this.last7Days = const [0, 0, 0, 0, 0, 0, 0],
+    this.records = const [],
   });
+}
+
+/// One paid trip: what the customer paid, iTULOD's commission and the
+/// rider's share, and how it was paid (cash / gcash / wallet).
+class EarningRecord {
+  final String method;
+  final String bookingType;
+  final double amount;
+  final double commission;
+  final double payout;
+  final DateTime createdAt;
+
+  const EarningRecord({
+    required this.method,
+    required this.bookingType,
+    required this.amount,
+    required this.commission,
+    required this.payout,
+    required this.createdAt,
+  });
+
+  /// A cancellation / no-show fee goes to the rider whole (no commission).
+  bool get isFee => commission == 0 && amount == payout;
 }
 
 /// "Your day at a glance" snapshot for the rider home tab — mirrors the web
@@ -452,14 +478,25 @@ class RiderRepository {
 
     final payments = await _supabase
         .from('payments')
-        .select('rider_payout, created_at')
+        .select('rider_payout, created_at, method, amount, platform_commission, booking_type, status')
         .eq('rider_id', riderId);
 
+    final records = <EarningRecord>[];
     for (final row in (payments as List)) {
       final payout = (row['rider_payout'] as num?)?.toDouble() ?? 0;
       final created = DateTime.tryParse(row['created_at'] as String? ?? '');
       if (created == null) continue;
       final local = created.toLocal();
+      if (row['status'] == 'paid') {
+        records.add(EarningRecord(
+          method: row['method'] as String? ?? '',
+          bookingType: row['booking_type'] as String? ?? '',
+          amount: (row['amount'] as num?)?.toDouble() ?? 0,
+          commission: (row['platform_commission'] as num?)?.toDouble() ?? 0,
+          payout: payout,
+          createdAt: local,
+        ));
+      }
       if (!local.isBefore(startOfDay)) today += payout;
       if (!local.isBefore(startOfWeek)) week += payout;
       if (!local.isBefore(startOfMonth)) month += payout;
@@ -490,6 +527,7 @@ class RiderRepository {
       month: month,
       averageRating: ratingCount > 0 ? ratingSum / ratingCount : 0,
       last7Days: daily,
+      records: records..sort((a, b) => b.createdAt.compareTo(a.createdAt)),
     );
   }
 
