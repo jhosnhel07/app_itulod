@@ -158,18 +158,11 @@ class _CustomerDashboardScreenState
             _index = i;
             _navCompact = false;
           });
-          if (i == 2) ref.invalidate(unreadNotificationsProvider);
         },
         items: [
           const LiquidNavItem(icon: AppIcons.home, activeIcon: AppIcons.homeActive, label: 'Home'),
           const LiquidNavItem(icon: AppIcons.history, activeIcon: AppIcons.history, label: 'Bookings'),
-          LiquidNavItem(
-            icon: AppIcons.notifications,
-            activeIcon: AppIcons.notificationsActive,
-            label: 'Notifications',
-            badge: unreadAsync.value ?? 0,
-          ),
-          const LiquidNavItem(icon: AppIcons.profile, activeIcon: AppIcons.profileActive, label: 'Profile'),
+          // Notifications and Profile open from the profile picture at the top
         ],
       ),
     );

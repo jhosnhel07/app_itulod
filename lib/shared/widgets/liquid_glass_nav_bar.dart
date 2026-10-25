@@ -146,17 +146,22 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar> with SingleTicker
       animation: _c,
       builder: (context, _) {
         final t = _c.value;
-        final movingRight = _to >= _from;
+        final movingRight = _to >= (_from >= 0 && _from < n ? _from : _to);
         final lead = _lead.transform(t), trail = _trail.transform(t);
         const inset = 2.0;
-        final fromL = _from * itemW + inset, fromR = (_from + 1) * itemW - inset;
+        // A page opened from the profile menu (Profile, Notifications) has no
+        // button here — no highlight then, and no slide in from nowhere.
+        final hasTarget = _to >= 0 && _to < n;
+        final from = _from >= 0 && _from < n ? _from : _to;
+        final fromL = from * itemW + inset, fromR = (from + 1) * itemW - inset;
         final toL = _to * itemW + inset, toR = (_to + 1) * itemW - inset;
         final left = lerpDouble(fromL, toL, movingRight ? trail : lead)!;
         final right = lerpDouble(fromR, toR, movingRight ? lead : trail)!;
         // Thins a little while stretched, then settles.
-        final squish = _from == _to ? 1.0 : 1 - 0.14 * math.sin(math.pi * t);
+        final squish = from == _to ? 1.0 : 1 - 0.14 * math.sin(math.pi * t);
         return Stack(
           children: [
+            if (hasTarget)
             Positioned(
               left: left,
               width: math.max(0, right - left),

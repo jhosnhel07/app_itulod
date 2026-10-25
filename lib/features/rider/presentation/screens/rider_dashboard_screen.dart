@@ -18,6 +18,7 @@ import '../widgets/rider_history_tab.dart';
 import '../widgets/rider_home_tab.dart';
 import '../widgets/rider_requests_tab.dart';
 import '../widgets/rider_trip_tab.dart';
+import 'vehicle_documents_screen.dart';
 import '../../../../shared/models/booking_models.dart';
 import '../../data/rider_location_broadcaster.dart';
 import '../../data/rider_repository.dart';
@@ -290,7 +291,7 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
       const RiderHistoryTab(),
       Column(
         children: [
-          if (application != null) _VehicleInfoCard(application: application),
+          if (application != null) _VehicleButton(application: application),
           const Expanded(child: ProfileScreen()),
         ],
       ),
@@ -328,16 +329,8 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
                       ],
                     ),
                   ),
-                  IconButton(
-                    tooltip: unread > 0 ? 'Notifications ($unread unread)' : 'Notifications',
-                    onPressed: () => _openNotifications(context),
-                    icon: Badge.count(
-                      count: unread,
-                      isLabelVisible: unread > 0,
-                      child: const Icon(Icons.notifications_rounded, color: Colors.white),
-                    ),
-                  ),
-                  // Profile picture → My profile, Dark mode, Log out.
+                  // Profile picture → My profile, Notifications, Dark mode, Log out
+                  // (the only way to them — no bell or Profile tab in the bar).
                   AccountMenuButton(
                     onOpenProfile: () => setState(() => _index = 5),
                     onOpenNotifications: () => _openNotifications(context),
@@ -405,7 +398,6 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
           LiquidNavItem(icon: AppIcons.trip, activeIcon: AppIcons.trip, label: 'Trip'),
           LiquidNavItem(icon: AppIcons.earnings, activeIcon: AppIcons.earnings, label: 'Earnings'),
           LiquidNavItem(icon: AppIcons.history, activeIcon: AppIcons.history, label: 'History'),
-          LiquidNavItem(icon: AppIcons.profile, activeIcon: AppIcons.profileActive, label: 'Profile'),
         ],
       ),
     );
@@ -448,78 +440,50 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
   }
 }
 
-class _VehicleInfoCard extends StatelessWidget {
+/// Top of the rider's Profile: opens the vehicle details and uploaded documents.
+class _VehicleButton extends StatelessWidget {
   final RiderApplicationModel application;
-
-  const _VehicleInfoCard({required this.application});
+  const _VehicleButton({required this.application});
 
   @override
   Widget build(BuildContext context) {
-    final rows = <MapEntry<String, String>>[
-      MapEntry('Status', application.status.name),
-      if (application.vehicleType.isNotEmpty)
-        MapEntry('Vehicle type', application.vehicleType),
-      if (application.vehiclePlate != null &&
-          application.vehiclePlate!.isNotEmpty)
-        MapEntry('Plate number', application.vehiclePlate!),
-      if (application.vehicleModel != null &&
-          application.vehicleModel!.isNotEmpty)
-        MapEntry('Model', application.vehicleModel!),
-      if (application.licenseNumber != null &&
-          application.licenseNumber!.isNotEmpty)
-        MapEntry('License no.', application.licenseNumber!),
-    ];
-
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: Material(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.two_wheeler_rounded,
-                  size: 18, color: AppColors.primary),
-              const SizedBox(width: 6),
-              Text('My Vehicle', style: AppTypography.bodyBold),
-            ],
-          ),
-          const SizedBox(height: 10),
-          ...rows.map((row) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 110,
-                      child: Text(row.key, style: AppTypography.captionDark),
-                    ),
-                    Expanded(
-                        child: Text(row.value,
-                            style: AppTypography.bodyMedium
-                                .copyWith(fontSize: 13))),
-                  ],
-                ),
-              )),
-          if (application.notes != null && application.notes!.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text('Admin note: ${application.notes}',
-                  style: AppTypography.captionDark.copyWith(fontSize: 12)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => VehicleDocumentsScreen(application: application),
+          )),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.cardBorder),
             ),
-          ],
-        ],
+            child: Row(
+              children: [
+                Icon(Icons.two_wheeler_rounded, size: 20, color: AppColors.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Vehicle & documents', style: AppTypography.bodyBold),
+                      Text(
+                        [application.vehicleType, if ((application.vehiclePlate ?? '').isNotEmpty) application.vehiclePlate!].join(' · '),
+                        style: AppTypography.caption,
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: AppColors.neutral400),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

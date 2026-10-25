@@ -33,6 +33,9 @@ class RiderApplicationModel {
   final String? licenseNumber;
   final String? licenseUrl;
   final String? orCrUrl;
+  final String? selfieUrl;
+  final String? vehicleUrl;
+  final String? nbiUrl;
   final String vehicleType;
   final String? vehiclePlate;
   final String? vehicleModel;
@@ -49,6 +52,9 @@ class RiderApplicationModel {
     this.licenseNumber,
     this.licenseUrl,
     this.orCrUrl,
+    this.selfieUrl,
+    this.vehicleUrl,
+    this.nbiUrl,
     required this.vehicleType,
     this.vehiclePlate,
     this.vehicleModel,
@@ -67,6 +73,9 @@ class RiderApplicationModel {
       licenseNumber: json['license_number'] as String?,
       licenseUrl: json['license_url'] as String?,
       orCrUrl: json['or_cr_url'] as String?,
+      selfieUrl: json['selfie_url'] as String?,
+      vehicleUrl: json['vehicle_url'] as String?,
+      nbiUrl: json['nbi_url'] as String?,
       vehicleType: json['vehicle_type'] as String? ?? 'Motorcycle',
       vehiclePlate: json['vehicle_plate'] as String?,
       vehicleModel: json['vehicle_model'] as String?,
@@ -86,6 +95,9 @@ class RiderApplicationModel {
       'license_number': licenseNumber,
       'license_url': licenseUrl,
       'or_cr_url': orCrUrl,
+      'selfie_url': selfieUrl,
+      'vehicle_url': vehicleUrl,
+      'nbi_url': nbiUrl,
       'vehicle_type': vehicleType,
       'vehicle_plate': vehiclePlate,
       'vehicle_model': vehicleModel,
