@@ -147,10 +147,13 @@ class CustomerRepository {
     double? distanceKm,
     DateTime? scheduledFor,
     List<({String address, LatLng? point})> stops = const [],
+    /// Group size; the server checks it against the vehicle's range and
+    /// prices the ride with it (sql/044 vehicle_fare).
+    int passengers = 1,
   }) async {
     final km = distanceKm ??
         FareEstimator.simulateDistanceKm(pickupAddress, destinationAddress);
-    final fare = FareEstimator.estimateFare(vehicle, km);
+    final fare = FareEstimator.estimateRideFare(vehicle, km, passengers);
 
     final row = await _supabase.from('transport_bookings').insert({
       'customer_id': customerId,
@@ -163,6 +166,7 @@ class CustomerRepository {
       'destination_lng': destinationPoint?.longitude,
       'distance_km': double.parse(km.toStringAsFixed(2)),
       'estimated_fare': double.parse(fare.toStringAsFixed(2)),
+      'passengers': passengers,
       'status': 'pending',
       'payment_method': paymentMethod,
       if (scheduledFor != null) 'scheduled_for': scheduledFor.toUtc().toIso8601String(),
@@ -501,7 +505,7 @@ class CustomerRepository {
     try {
       return await _supabase
           .from('vehicles')
-          .select('name, base_fare, per_km_rate')
+          .select('name, capacity, base_fare, per_km_rate, ride_base_fare, ride_per_km_rate, ride_base_km, extra_passenger_fee, fare_per_passenger, min_passengers, max_passengers')
           .eq('id', vehicleId)
           .maybeSingle();
     } catch (e, s) {

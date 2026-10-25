@@ -45,6 +45,10 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
   int _routeToken = 0;
 
   VehicleModel? _vehicle;
+  /// Not counting the driver. Only vehicles whose range fits are offered
+  /// (sql/044; web: renderRideVehicleOptions).
+  int _passengers = 1;
+  static const _maxPassengers = 40;
   String _paymentMethod = 'cash';
   DateTime? _scheduledFor;
 
@@ -74,10 +78,69 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
   double? get _fare {
     final km = _distanceKm;
     if (km == null) return null;
-    final vehicles = ref.read(vehiclesForServiceProvider('ride')).value ?? [];
-    final vehicle = _vehicle ?? (vehicles.isNotEmpty ? vehicles.first : null);
+    final vehicle = _vehicle;
     if (vehicle == null) return null;
-    return FareEstimator.estimateFare(vehicle, km);
+    return FareEstimator.estimateRideFare(vehicle, km, _passengers);
+  }
+
+  /// Keeps the chosen vehicle when it still fits the group, otherwise picks
+  /// the first one that does (null when none fits).
+  List<VehicleModel> _fitVehicles(List<VehicleModel> all) {
+    final fitting = all.where((v) => v.fitsPassengers(_passengers)).toList();
+    final current = _vehicle;
+    if (current == null || !fitting.any((v) => v.id == current.id)) {
+      _vehicle = fitting.isNotEmpty ? fitting.first : null;
+    } else {
+      _vehicle = fitting.firstWhere((v) => v.id == current.id);
+    }
+    return fitting;
+  }
+
+  void _setPassengers(int n) => setState(() => _passengers = n.clamp(1, _maxPassengers));
+
+  String _vehicleLabel(VehicleModel v) {
+    final base = v.rideBaseFare ?? v.baseFare;
+    final price = v.farePerPassenger
+        ? '${Formatters.currency(base)}/person'
+        : 'from ${Formatters.currency(base)}';
+    return '${v.name} — ${v.passengerRangeText} · $price';
+  }
+
+  Widget _passengerStepper() {
+    Widget btn(IconData icon, String tip, int delta, bool enabled) => IconButton.outlined(
+          tooltip: tip,
+          onPressed: enabled ? () => _setPassengers(_passengers + delta) : null,
+          icon: Icon(icon, size: 20),
+        );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+        child: Row(
+          children: [
+            const Icon(Icons.groups_rounded, color: AppColors.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Passengers', style: AppTypography.bodyBold),
+                  Text('Not counting the driver', style: AppTypography.caption),
+                ],
+              ),
+            ),
+            btn(Icons.remove_rounded, 'Fewer passengers', -1, _passengers > 1),
+            SizedBox(
+              width: 44,
+              child: Text('$_passengers',
+                  key: const Key('ride-passengers'),
+                  textAlign: TextAlign.center,
+                  style: AppTypography.h3),
+            ),
+            btn(Icons.add_rounded, 'More passengers', 1, _passengers < _maxPassengers),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -215,6 +278,7 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
                 (address: _stopControllers[i].text, point: _stopPoints[i]),
           ],
           distanceKm: _distanceKm,
+          passengers: _passengers,
           fare: fare,
           paymentMethod: _paymentMethod,
           scheduledFor: _scheduledFor,
@@ -234,14 +298,14 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
       body: vehiclesAsync.when(
         loading: () => const SkeletonList(count: 3),
         error: (e, _) => Center(child: Text('Could not load vehicles.\n$e', textAlign: TextAlign.center)),
-        data: (vehicles) {
-          _vehicle ??= vehicles.isNotEmpty ? vehicles.first : null;
+        data: (allVehicles) {
+          final vehicles = _fitVehicles(allVehicles);
           final fare = _fare;
           // Where → Vehicle → Payment here; Confirm is BookingConfirmationScreen.
           return BookingStepper(
             fare: fare == null ? '—' : Formatters.currency(fare),
             finishLabel: 'Review Booking',
-            onFinish: vehicles.isEmpty ? null : _submit,
+            onFinish: allVehicles.isEmpty ? null : _submit,
             onChanged: () => setState(() {}),
             steps: [
               BookingStep('Where', [
@@ -319,17 +383,29 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
                   ],
               ]),
               BookingStep('Vehicle', [
+                  _passengerStepper(),
+                  const SizedBox(height: 12),
                   DropdownButtonFormField<VehicleModel>(
+                    // Rebuilt when the group size changes the list.
+                    key: ValueKey('ride-vehicle-$_passengers-${vehicles.length}'),
                     initialValue: _vehicle,
                     isExpanded: true,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Vehicle type',
-                      prefixIcon: Icon(Icons.directions_rounded),
+                      prefixIcon: const Icon(Icons.directions_rounded),
+                      helperText: vehicles.isEmpty
+                          ? null
+                          : 'Only vehicles that fit your group are listed.',
                     ),
+                    hint: Text(
+                        'No vehicle fits $_passengers passenger${_passengers == 1 ? '' : 's'} right now'),
+                    validator: (v) => v == null
+                        ? 'No vehicle fits $_passengers passenger${_passengers == 1 ? '' : 's'} — change the number'
+                        : null,
                     items: vehicles
                         .map((v) => DropdownMenuItem(
                               value: v,
-                              child: Text('${v.name} — from ${Formatters.currency(v.baseFare)}'),
+                              child: Text(_vehicleLabel(v), overflow: TextOverflow.ellipsis),
                             ))
                         .toList(),
                     onChanged: (v) => setState(() => _vehicle = v),
@@ -413,8 +489,7 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
     final km = _distanceKm;
     final fare = _fare;
 
-    final baseFare = _vehicle?.baseFare ?? 0.0;
-    final distanceFare = (fare != null) ? fare - baseFare : null;
+    final vehicle = _vehicle;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -449,24 +524,17 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
               ),
             ],
           ),
-          if (fare != null) ...[
+          if (fare != null && km != null && vehicle != null) ...[
             const SizedBox(height: 12),
             Container(height: 1, color: AppColors.cardBorder),
             const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Base Fare', style: AppTypography.caption.copyWith(color: AppColors.neutral500)),
-                Text(Formatters.currency(baseFare), style: AppTypography.caption.copyWith(color: AppColors.neutral700)),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Distance Charge', style: AppTypography.caption.copyWith(color: AppColors.neutral500)),
-                Text(Formatters.currency(distanceFare!), style: AppTypography.caption.copyWith(color: AppColors.neutral700)),
-              ],
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                FareEstimator.rideFareBreakdown(vehicle, km, _passengers, Formatters.currency),
+                key: const Key('ride-fare-breakdown'),
+                style: AppTypography.caption.copyWith(color: AppColors.neutral700),
+              ),
             ),
           ],
           const SizedBox(height: 12),

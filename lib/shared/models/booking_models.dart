@@ -225,6 +225,8 @@ class TransportBookingModel extends BookingBase {
   final double? destinationLat;
   final double? destinationLng;
   final DateTime? scheduledFor;
+  /// Riders in the group, not counting the driver (sql/044).
+  final int passengers;
 
   const TransportBookingModel({
     required super.id,
@@ -237,6 +239,7 @@ class TransportBookingModel extends BookingBase {
     this.destinationLat,
     this.destinationLng,
     this.scheduledFor,
+    this.passengers = 1,
     super.distanceKm,
     super.riderId,
     required super.status,
@@ -270,6 +273,7 @@ class TransportBookingModel extends BookingBase {
       destinationLat: _num(json['destination_lat']),
       destinationLng: _num(json['destination_lng']),
       scheduledFor: _parseTimestamp(json['scheduled_for']),
+      passengers: (json['passengers'] as num?)?.toInt() ?? 1,
       distanceKm: _num(json['distance_km']),
       riderId: json['rider_id'] as String?,
       status: json['status'] as String? ?? 'pending',

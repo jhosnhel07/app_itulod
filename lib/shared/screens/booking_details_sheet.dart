@@ -6,6 +6,7 @@ import '../../core/constants/app_strings.dart';
 import '../../core/constants/app_typography.dart';
 import '../../core/supabase/supabase_client.dart';
 import '../../core/utils/app_log.dart';
+import '../../core/utils/fare_estimator.dart';
 import '../../core/utils/formatters.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../features/chat/presentation/screens/chat_screen.dart';
@@ -13,6 +14,7 @@ import '../../features/customer/data/customer_repository.dart';
 import '../../features/customer/presentation/screens/booking_confirmation_screen.dart'
     show paymentMethodLabel;
 import '../models/booking_models.dart';
+import '../models/vehicle_model.dart';
 import '../providers/booking_extras_providers.dart';
 import '../widgets/booking_route_map.dart';
 import '../widgets/loading_skeleton.dart';
@@ -327,6 +329,8 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
       ),
       const SizedBox(height: 6),
       if (b.distanceKm != null) _detailRow('Distance', Formatters.distance(b.distanceKm)),
+      if (b is TransportBookingModel)
+        _detailRow('Passengers', '${(b as TransportBookingModel).passengers}'),
       if (b is TransportBookingModel && (b as TransportBookingModel).scheduledFor != null)
         _detailRow('Scheduled for', Formatters.date((b as TransportBookingModel).scheduledFor!)),
       if (b is HaulingBookingModel && (b as HaulingBookingModel).scheduledFor != null)
@@ -484,8 +488,16 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
       _detailRow('Vehicle type', name),
       if (plate != null && plate.isNotEmpty && !onRiderCard) _detailRow('Plate number', plate),
       if (license != null && license.isNotEmpty) _detailRow('License no.', license),
-      if (base != null) _detailRow('Base fare', Formatters.currency(base)),
-      if (perKm != null) _detailRow('Rate per km', '${Formatters.currency(perKm)}/km'),
+      // Rides are priced with the ride rates and the group size (sql/044).
+      if (b is TransportBookingModel && _vehicle != null)
+        _detailRow(
+            'Fare',
+            FareEstimator.rideFareBreakdown(VehicleModel.fromJson(_vehicle!), b.distanceKm ?? 1,
+                (b as TransportBookingModel).passengers, Formatters.currency))
+      else ...[
+        if (base != null) _detailRow('Base fare', Formatters.currency(base)),
+        if (perKm != null) _detailRow('Rate per km', '${Formatters.currency(perKm)}/km'),
+      ],
     ]);
   }
 

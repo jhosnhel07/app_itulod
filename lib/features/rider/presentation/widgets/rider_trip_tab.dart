@@ -686,6 +686,9 @@ class _OrderDetails extends ConsumerWidget {
         ],
       );
     }
+    if (b is TransportBookingModel) {
+      return _line('Passengers', '${b.passengers}');
+    }
     if (b is! FoodDeliveryModel) return const SizedBox.shrink();
 
     final itemsAsync = ref.watch(foodOrderItemsProvider(b.id));

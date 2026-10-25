@@ -29,6 +29,7 @@ class BookingConfirmationScreen extends ConsumerStatefulWidget {
   final LatLng? pickupPoint;
   final LatLng? destinationPoint;
   final double? distanceKm;
+  final int passengers;
   final double fare;
   final String paymentMethod;
   final DateTime? scheduledFor;
@@ -42,6 +43,7 @@ class BookingConfirmationScreen extends ConsumerStatefulWidget {
     this.pickupPoint,
     this.destinationPoint,
     required this.distanceKm,
+    this.passengers = 1,
     required this.fare,
     required this.paymentMethod,
     this.scheduledFor,
@@ -107,6 +109,7 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
         distanceKm: widget.distanceKm,
         scheduledFor: widget.scheduledFor,
         stops: widget.stops,
+        passengers: widget.passengers,
       );
 
       // The promo is redeemed server-side against the placed booking; a
@@ -190,6 +193,7 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
                     for (var i = 0; i < widget.stops.length; i++)
                       _row('Stop ${i + 1}', widget.stops[i].address),
                     _row('To', widget.destinationAddress),
+                    _row('Passengers', '${widget.passengers}'),
                     _row('Vehicle', widget.vehicle.name),
                     _row('Distance', Formatters.distance(widget.distanceKm)),
                     if (widget.scheduledFor != null)

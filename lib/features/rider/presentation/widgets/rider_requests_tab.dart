@@ -194,6 +194,21 @@ class RiderRequestsTab extends ConsumerWidget {
                           ),
                         ),
                       ],
+                      if (b is TransportBookingModel) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary50,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            '${b.passengers} passenger${b.passengers == 1 ? '' : 's'}',
+                            style: AppTypography.caption.copyWith(
+                                fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.primaryDark),
+                          ),
+                        ),
+                      ],
                       if (b.expiresAt != null) ...[
                         const SizedBox(height: 4),
                         Row(
