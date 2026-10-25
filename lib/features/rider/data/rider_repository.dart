@@ -51,6 +51,15 @@ class RiderHomeSnapshot {
   }
 }
 
+/// Commission the rider owes on cash trips vs the admin's limit
+/// (sql/043 rider_debt_status). Over the limit, the rider can't accept jobs.
+class RiderDebt {
+  final double owed;
+  final double limit;
+  final bool blocked;
+  const RiderDebt({this.owed = 0, this.limit = 0, this.blocked = false});
+}
+
 class RiderBalance {
   final double onlineEarnings;
   final double cashCommission;
@@ -494,6 +503,22 @@ class RiderRepository {
     } catch (e, s) {
       AppLog.warn('rider_balance failed', e, s);
       return null;
+    }
+  }
+
+  Future<RiderDebt> fetchDebtStatus() async {
+    try {
+      final rows = await _supabase.rpc('rider_debt_status');
+      if (rows is! List || rows.isEmpty) return const RiderDebt();
+      final r = Map<String, dynamic>.from(rows.first as Map);
+      return RiderDebt(
+        owed: (r['owed'] as num?)?.toDouble() ?? 0,
+        limit: (r['debt_limit'] as num?)?.toDouble() ?? 0,
+        blocked: r['blocked'] == true,
+      );
+    } catch (e, s) {
+      AppLog.warn('rider_debt_status failed', e, s);
+      return const RiderDebt();
     }
   }
 

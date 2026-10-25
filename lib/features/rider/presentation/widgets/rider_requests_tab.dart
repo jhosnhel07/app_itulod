@@ -21,6 +21,10 @@ final riderRequestsProvider =
   return repo.fetchOpenRequests();
 });
 
+final riderDebtProvider = FutureProvider.autoDispose<RiderDebt>((ref) async {
+  return ref.watch(riderRepositoryProvider).fetchDebtStatus();
+});
+
 final riderActiveBookingsProvider =
     FutureProvider.autoDispose<List<BookingBase>>((ref) async {
   final repo = ref.watch(riderRepositoryProvider);
@@ -28,6 +32,46 @@ final riderActiveBookingsProvider =
   if (profile == null) return [];
   return repo.fetchAcceptedBookings(profile.id);
 });
+
+/// Shown above the requests while the rider owes more than the admin's limit.
+class _DebtBanner extends StatelessWidget {
+  final RiderDebt debt;
+  const _DebtBanner({required this.debt});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.danger.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.danger.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline_rounded, color: AppColors.danger, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('You owe iTULOD ${Formatters.currency(debt.owed)} in commission',
+                    style: AppTypography.bodyBold.copyWith(color: AppColors.danger)),
+                const SizedBox(height: 2),
+                Text(
+                  "That's more than the ${Formatters.currency(debt.limit)} limit, so you can't accept jobs until you settle it with the admin (GCash or cash). Your balance is on the Earnings page.",
+                  style: AppTypography.caption.copyWith(color: AppColors.danger),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class RiderRequestsTab extends ConsumerWidget {
   const RiderRequestsTab({super.key});
@@ -38,9 +82,13 @@ class RiderRequestsTab extends ConsumerWidget {
     final application = ref.watch(authNotifierProvider).riderApplication;
     final approved = application?.status == ApplicationStatus.approved;
     final float = ref.watch(authNotifierProvider).profile?.floatAmount ?? 0;
+    final debt = ref.watch(riderDebtProvider).valueOrNull ?? const RiderDebt();
 
     return RefreshIndicator(
-      onRefresh: () async => ref.invalidate(riderRequestsProvider),
+      onRefresh: () async {
+        ref.invalidate(riderRequestsProvider);
+        ref.invalidate(riderDebtProvider);
+      },
       child: requestsAsync.when(
         loading: () => const SkeletonList(),
         error: (e, _) => ListView(
@@ -58,6 +106,11 @@ class RiderRequestsTab extends ConsumerWidget {
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
+                if (debt.blocked)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                    child: _DebtBanner(debt: debt),
+                  ),
                 SizedBox(
                   height: MediaQuery.of(context).size.height * 0.6,
                   child: Column(
@@ -77,8 +130,10 @@ class RiderRequestsTab extends ConsumerWidget {
           return ListView.builder(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(20),
-            itemCount: requests.length,
-            itemBuilder: (_, i) {
+            itemCount: requests.length + (debt.blocked ? 1 : 0),
+            itemBuilder: (_, index) {
+              if (debt.blocked && index == 0) return _DebtBanner(debt: debt);
+              final i = debt.blocked ? index - 1 : index;
               final b = requests[i];
               // a rider buys a food order with their own cash on hand (sql/042 enforces it too)
               final shortOfCash = b is FoodDeliveryModel && (b.itemSubtotal ?? 0) > float;
@@ -180,7 +235,9 @@ class RiderRequestsTab extends ConsumerWidget {
                           Tooltip(
                             message: !approved
                                 ? 'Wait for admin approval'
-                                : shortOfCash
+                                : debt.blocked
+                                    ? 'Settle what you owe iTULOD to accept jobs'
+                                    : shortOfCash
                                     ? 'Not enough cash on hand for this order'
                                     : 'Accept this booking',
                             child: AppButton(
@@ -188,7 +245,7 @@ class RiderRequestsTab extends ConsumerWidget {
                               width: 110,
                               height: 40,
                               icon: Icons.check_circle_outline_rounded,
-                              onPressed: approved && !shortOfCash ? () => _accept(ref, context, b) : null,
+                              onPressed: approved && !shortOfCash && !debt.blocked ? () => _accept(ref, context, b) : null,
                             ),
                           ),
                         ],
