@@ -80,6 +80,8 @@ class RiderRequestsTab extends ConsumerWidget {
             itemCount: requests.length,
             itemBuilder: (_, i) {
               final b = requests[i];
+              // a rider buys a food order with their own cash on hand (sql/042 enforces it too)
+              final shortOfCash = b is FoodDeliveryModel && (b.itemSubtotal ?? 0) > float;
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
                 child: Padding(
@@ -152,8 +154,7 @@ class RiderRequestsTab extends ConsumerWidget {
                           ],
                         ),
                       ],
-                      if (b is FoodDeliveryModel &&
-                          (b.itemSubtotal ?? 0) > float) ...[
+                      if (shortOfCash) ...[
                         const SizedBox(height: 4),
                         Row(
                           children: [
@@ -162,7 +163,7 @@ class RiderRequestsTab extends ConsumerWidget {
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
-                                'Order costs ${Formatters.currency(b.itemSubtotal)} — more than your ${Formatters.currency(float)} float.',
+                                'Order costs ${Formatters.currency(b.itemSubtotal)} — more than your ${Formatters.currency(float)} cash on hand. Raise it on Home to accept.',
                                 style: AppTypography.caption.copyWith(
                                     color: AppColors.danger, fontSize: 11),
                               ),
@@ -177,15 +178,17 @@ class RiderRequestsTab extends ConsumerWidget {
                               style: AppTypography.bodyBold.copyWith(color: AppColors.primary)),
                           const Spacer(),
                           Tooltip(
-                            message: approved
-                                ? 'Accept this booking'
-                                : 'Wait for admin approval',
+                            message: !approved
+                                ? 'Wait for admin approval'
+                                : shortOfCash
+                                    ? 'Not enough cash on hand for this order'
+                                    : 'Accept this booking',
                             child: AppButton(
                               text: 'Accept',
                               width: 110,
                               height: 40,
                               icon: Icons.check_circle_outline_rounded,
-                              onPressed: approved ? () => _accept(ref, context, b) : null,
+                              onPressed: approved && !shortOfCash ? () => _accept(ref, context, b) : null,
                             ),
                           ),
                         ],

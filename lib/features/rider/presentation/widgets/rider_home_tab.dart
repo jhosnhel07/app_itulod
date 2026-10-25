@@ -578,7 +578,7 @@ class _FloatCardState extends ConsumerState<_FloatCard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'How much cash do you currently have to buy food and parcels for customers?',
+              'How much cash do you have to buy food orders? You can only accept food orders that cost up to this amount.',
               style: AppTypography.body,
             ),
             const SizedBox(height: 16),
