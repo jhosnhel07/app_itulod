@@ -132,8 +132,9 @@ class _Card extends StatelessWidget {
   }
 }
 
-/// Path inside the bucket from the URL saved at sign-up.
-String? _docPath(String? url) {
+/// Path inside the rider-documents bucket from the URL saved at sign-up
+/// (also used by the booking details' Rider documents).
+String? riderDocPath(String? url) {
   if (url == null || url.isEmpty) return null;
   final i = url.indexOf('/rider-documents/');
   if (i < 0) return null;
@@ -153,7 +154,7 @@ class _DocTileState extends State<_DocTile> {
   late final Future<String?> _signed = _sign();
 
   Future<String?> _sign() async {
-    final path = _docPath(widget.url);
+    final path = riderDocPath(widget.url);
     if (path == null) return null;
     try {
       return await SupabaseConfig.client.storage.from('rider-documents').createSignedUrl(path, 3600);
@@ -166,7 +167,7 @@ class _DocTileState extends State<_DocTile> {
 
   @override
   Widget build(BuildContext context) {
-    final uploaded = _docPath(widget.url) != null;
+    final uploaded = riderDocPath(widget.url) != null;
     return FutureBuilder<String?>(
       future: _signed,
       builder: (context, snap) {

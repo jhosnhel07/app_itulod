@@ -11,6 +11,7 @@ import '../../core/utils/formatters.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../features/chat/presentation/screens/chat_screen.dart';
 import '../../features/customer/data/customer_repository.dart';
+import '../../features/rider/presentation/screens/vehicle_documents_screen.dart' show riderDocPath;
 import '../../features/customer/presentation/screens/booking_confirmation_screen.dart'
     show paymentMethodLabel;
 import '../models/booking_models.dart';
@@ -655,12 +656,28 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
           leading: const Icon(Icons.badge_outlined),
           title: Text(label),
           trailing: const Icon(Icons.open_in_new_rounded, size: 18),
-          onTap: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+          onTap: () => _openRiderDoc(url),
         );
     return _section('Rider documents', [
       if (license != null && license.isNotEmpty) link("Driver's License", license),
       if (orcr != null && orcr.isNotEmpty) link('OR / CR', orcr),
     ]);
+  }
+
+  /// rider-documents is private — the saved public URL answers "Bucket not
+  /// found" — so open a 1-hour signed link (customers may sign their rider's
+  /// license and OR/CR, web sql/045).
+  Future<void> _openRiderDoc(String url) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final path = riderDocPath(url);
+    try {
+      if (path == null) throw Exception('file not found');
+      final signed = await SupabaseConfig.client.storage.from('rider-documents').createSignedUrl(path, 3600);
+      await launchUrl(Uri.parse(signed), mode: LaunchMode.externalApplication);
+    } catch (e, s) {
+      AppLog.warn('BookingDetailsSheet: rider document', e, s);
+      messenger.showSnackBar(const SnackBar(content: Text("Couldn't open that document.")));
+    }
   }
 
   Widget _proofSection() {
