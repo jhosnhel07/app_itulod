@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/services/last_place.dart';
 import '../../../../core/utils/app_log.dart';
 import '../../../../shared/models/profile_model.dart';
 import '../../../../shared/models/rider_application_model.dart';
@@ -426,6 +427,7 @@ class AuthNotifier extends StateNotifier<AppAuthState> {
 
   Future<void> signOut() async {
     state = state.copyWith(status: AuthStatus.loading);
+    await LastPlace.clearAll(); // the next person on this phone starts on Home
     await _repo.signOut();
     state = const AppAuthState(status: AuthStatus.unauthenticated);
   }

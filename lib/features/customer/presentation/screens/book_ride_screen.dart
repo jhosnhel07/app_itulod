@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
+import '../../../../core/services/last_place.dart';
 import '../../../../core/services/route_service.dart';
 import '../../../../core/utils/fare_estimator.dart';
 import '../../../../core/utils/formatters.dart';
@@ -25,7 +26,8 @@ class BookRideScreen extends ConsumerStatefulWidget {
   ConsumerState<BookRideScreen> createState() => _BookRideScreenState();
 }
 
-class _BookRideScreenState extends ConsumerState<BookRideScreen> {
+class _BookRideScreenState extends ConsumerState<BookRideScreen>
+    with BookingDraftMixin<BookRideScreen> {
   final _pickupController = TextEditingController();
   final _destinationController = TextEditingController();
 
@@ -87,11 +89,13 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
   /// the first one that does (null when none fits).
   List<VehicleModel> _fitVehicles(List<VehicleModel> all) {
     final fitting = all.where((v) => v.fitsPassengers(_passengers)).toList();
-    final current = _vehicle;
-    if (current == null || !fitting.any((v) => v.id == current.id)) {
+    // a restored draft names its vehicle by id
+    final wantId = _draftVehicleId ?? _vehicle?.id;
+    if (fitting.isNotEmpty) _draftVehicleId = null;
+    if (wantId == null || !fitting.any((v) => v.id == wantId)) {
       _vehicle = fitting.isNotEmpty ? fitting.first : null;
     } else {
-      _vehicle = fitting.firstWhere((v) => v.id == current.id);
+      _vehicle = fitting.firstWhere((v) => v.id == wantId);
     }
     return fitting;
   }
@@ -143,8 +147,59 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
     );
   }
 
+  // ── Draft: reopened here after Android closed the app (LastPlace) ─────
+
+  @override
+  String get draftForm => 'ride';
+
+  String? _draftVehicleId;
+
+  @override
+  Map<String, dynamic> draftToJson() => {
+        'pickup': _pickupController.text,
+        'pickupPoint': LastPlace.pointToJson(_pickupPoint),
+        'destination': _destinationController.text,
+        'destinationPoint': LastPlace.pointToJson(_destinationPoint),
+        'stops': [
+          for (var i = 0; i < _stopControllers.length; i++)
+            {'address': _stopControllers[i].text, 'point': LastPlace.pointToJson(_stopPoints[i])},
+        ],
+        'passengers': _passengers,
+        'vehicleId': _vehicle?.id,
+        'payment': _paymentMethod,
+        'scheduledFor': _scheduledFor?.toIso8601String(),
+      };
+
+  @override
+  void draftFromJson(Map<String, dynamic> d) {
+    _pickupController.text = d['pickup'] as String? ?? '';
+    _pickupPoint = LastPlace.pointFromJson(d['pickupPoint']);
+    _destinationController.text = d['destination'] as String? ?? '';
+    _destinationPoint = LastPlace.pointFromJson(d['destinationPoint']);
+    for (final s in (d['stops'] as List? ?? const []).take(_maxStops)) {
+      if (s is! Map) continue;
+      _stopControllers.add(TextEditingController(text: s['address'] as String? ?? ''));
+      _stopPoints.add(LastPlace.pointFromJson(s['point']));
+    }
+    _passengers = ((d['passengers'] as num?)?.toInt() ?? 1).clamp(1, _maxPassengers);
+    _draftVehicleId = d['vehicleId'] as String?;
+    _paymentMethod = d['payment'] as String? ?? 'cash';
+    final at = DateTime.tryParse(d['scheduledFor'] as String? ?? '');
+    _scheduledFor = at != null && at.isAfter(DateTime.now()) ? at : null;
+  }
+
+  @override
+  void afterDraftRestored() => _refreshRoute();
+
+  @override
+  void initState() {
+    super.initState();
+    initDraft();
+  }
+
   @override
   void dispose() {
+    disposeDraft();
     _pickupController.dispose();
     _destinationController.dispose();
     for (final c in _stopControllers) {
@@ -279,6 +334,7 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
           ],
           distanceKm: _distanceKm,
           passengers: _passengers,
+          onBooked: finishDraft,
           fare: fare,
           paymentMethod: _paymentMethod,
           scheduledFor: _scheduledFor,
@@ -303,6 +359,9 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen> {
           final fare = _fare;
           // Where → Vehicle → Payment here; Confirm is BookingConfirmationScreen.
           return BookingStepper(
+            key: ValueKey('ride-steps-$draftGeneration'),
+            initialStep: draftStep,
+            onStepChanged: onDraftStep,
             fare: fare == null ? '—' : Formatters.currency(fare),
             finishLabel: 'Review Booking',
             onFinish: allVehicles.isEmpty ? null : _submit,

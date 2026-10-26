@@ -30,6 +30,8 @@ class BookingConfirmationScreen extends ConsumerStatefulWidget {
   final LatLng? destinationPoint;
   final double? distanceKm;
   final int passengers;
+  /// The ride was placed — the booking screen drops its draft (LastPlace).
+  final VoidCallback? onBooked;
   final double fare;
   final String paymentMethod;
   final DateTime? scheduledFor;
@@ -44,6 +46,7 @@ class BookingConfirmationScreen extends ConsumerStatefulWidget {
     this.destinationPoint,
     required this.distanceKm,
     this.passengers = 1,
+    this.onBooked,
     required this.fare,
     required this.paymentMethod,
     this.scheduledFor,
@@ -111,6 +114,7 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
         stops: widget.stops,
         passengers: widget.passengers,
       );
+      widget.onBooked?.call();
 
       // The promo is redeemed server-side against the placed booking; a
       // rejection (already used, expired…) leaves the ride booked at full fare.

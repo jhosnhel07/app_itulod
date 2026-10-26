@@ -3,7 +3,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show AuthState, Session, User;
 
+import 'package:app_itulod/features/auth/data/auth_repository.dart';
 import 'package:app_itulod/features/auth/presentation/providers/auth_provider.dart';
 import 'package:app_itulod/features/customer/data/customer_repository.dart';
 import 'package:app_itulod/features/customer/presentation/screens/book_ride_screen.dart';
@@ -18,10 +21,24 @@ const _vehicles = [
   VehicleModel(id: 'j', name: 'Jeepney', rideBaseFare: 14, rideBaseKm: 4, ridePerKmRate: 2, farePerPassenger: true, minPassengers: 9, maxPassengers: 14),
 ];
 
+/// Signed out, no Supabase: the ride screen keeps no draft.
+class _NoAuthRepo implements AuthRepository {
+  @override
+  Stream<AuthState> get authStateChanges => const Stream.empty();
+  @override
+  User? get currentUser => null;
+  @override
+  Session? get currentSession => null;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
   testWidgets('passengers filter the vehicles', (tester) async {
+    SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(ProviderScope(
       overrides: [
+        authNotifierProvider.overrideWith((ref) => AuthNotifier(_NoAuthRepo())),
         vehiclesForServiceProvider('ride').overrideWithValue(const AsyncValue.data(_vehicles)),
         nearbyRidersProvider.overrideWith((ref) => Stream.value(const <NearbyRider>[])),
       ],

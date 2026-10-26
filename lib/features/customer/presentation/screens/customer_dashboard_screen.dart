@@ -6,6 +6,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_icons.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/services/app_alerts.dart';
+import '../../../../core/services/last_place.dart';
 import '../../../../core/services/push_service.dart';
 import '../../../../core/supabase/realtime_refresh.dart';
 import '../../../../shared/screens/profile_screen.dart';
@@ -13,6 +14,10 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../widgets/customer_bookings_tab.dart';
 import '../widgets/customer_home_tab.dart';
 import '../widgets/notifications_tab.dart';
+import 'book_food_screen.dart';
+import 'book_hauling_screen.dart';
+import 'book_parcel_screen.dart';
+import 'book_ride_screen.dart';
 
 class CustomerDashboardScreen extends ConsumerStatefulWidget {
   const CustomerDashboardScreen({super.key});
@@ -26,6 +31,8 @@ class _CustomerDashboardScreenState
     extends ConsumerState<CustomerDashboardScreen>
     with RealtimeRefreshMixin {
   int _index = 0;
+  /// Last tab written to LastPlace.
+  int _savedIndex = 0;
   /// Bottom bar shrinks while the page scrolls down.
   bool _navCompact = false;
 
@@ -49,6 +56,7 @@ class _CustomerDashboardScreenState
       final userId = ref.read(authNotifierProvider).profile?.id;
       if (mounted && userId != null) {
         _alerts?.start(userId: userId);
+        _restorePlace(userId);
         // Push to this phone, even with the app closed (Firebase).
         ref.read(pushServiceProvider).register().then((ok) => _alerts?.pushActive = ok);
       }
@@ -81,9 +89,31 @@ class _CustomerDashboardScreenState
     );
   }
 
+  /// Android closed the app in the background: open the tab — and the
+  /// booking screen — you were on (LastPlace; web: the #section in the address).
+  Future<void> _restorePlace(String userId) async {
+    final tab = await LastPlace.tab('customer', userId);
+    if (!mounted) return;
+    if (tab != null && tab > 0 && tab < _titles.length) setState(() => _index = _savedIndex = tab);
+    final Widget? screen = switch (await LastPlace.openForm(userId)) {
+      'ride' => const BookRideScreen(),
+      'food' => const BookFoodScreen(),
+      'parcel' => const BookParcelScreen(),
+      'hauling' => const BookHaulingScreen(),
+      _ => null,
+    };
+    if (screen != null && mounted) {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final profile = ref.watch(authNotifierProvider).profile;
+    if (_index != _savedIndex && profile != null) {
+      _savedIndex = _index;
+      LastPlace.saveTab('customer', profile.id, _index);
+    }
     final unreadAsync = ref.watch(unreadNotificationsProvider);
 
     final tabs = [

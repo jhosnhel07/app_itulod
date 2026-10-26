@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
+import '../../../../core/services/last_place.dart';
 import '../../../../core/services/route_service.dart';
 import '../../../../core/utils/fare_estimator.dart';
 import '../../../../core/utils/formatters.dart';
@@ -35,7 +36,8 @@ class BookParcelScreen extends ConsumerStatefulWidget {
   ConsumerState<BookParcelScreen> createState() => _BookParcelScreenState();
 }
 
-class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
+class _BookParcelScreenState extends ConsumerState<BookParcelScreen>
+    with BookingDraftMixin<BookParcelScreen> {
   final _senderNameController = TextEditingController();
   final _senderPhoneController = TextEditingController();
   final _senderAddressController = TextEditingController();
@@ -77,8 +79,63 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
     return FareEstimator.estimateFare(_vehicle, effectiveKm);
   }
 
+  // ── Draft: reopened here after Android closed the app (LastPlace) ─────
+
+  @override
+  String get draftForm => 'parcel';
+
+  String? _draftVehicleId;
+
+  Map<String, TextEditingController> get _draftFields => {
+        'senderName': _senderNameController,
+        'senderPhone': _senderPhoneController,
+        'senderAddress': _senderAddressController,
+        'receiverName': _receiverNameController,
+        'receiverPhone': _receiverPhoneController,
+        'receiverAddress': _receiverAddressController,
+        'weight': _weightController,
+        'description': _descriptionController,
+        'instructions': _instructionsController,
+        'cod': _codAmountController,
+      };
+
+  @override
+  Map<String, dynamic> draftToJson() => {
+        for (final e in _draftFields.entries) e.key: e.value.text,
+        'senderPoint': LastPlace.pointToJson(_senderPoint),
+        'receiverPoint': LastPlace.pointToJson(_receiverPoint),
+        'size': _parcelSize,
+        'roundTrip': _isRoundTrip,
+        'vehicleId': _vehicle?.id,
+        'payment': _paymentMethod,
+      };
+
+  @override
+  void draftFromJson(Map<String, dynamic> d) {
+    for (final e in _draftFields.entries) {
+      e.value.text = d[e.key] as String? ?? '';
+    }
+    _senderPoint = LastPlace.pointFromJson(d['senderPoint']);
+    _receiverPoint = LastPlace.pointFromJson(d['receiverPoint']);
+    final size = d['size'] as String?;
+    if (_parcelSizes.contains(size)) _parcelSize = size!;
+    _isRoundTrip = d['roundTrip'] as bool? ?? false;
+    _draftVehicleId = d['vehicleId'] as String?;
+    _paymentMethod = d['payment'] as String? ?? 'cash';
+  }
+
+  @override
+  void afterDraftRestored() => _refreshRoute();
+
+  @override
+  void initState() {
+    super.initState();
+    initDraft();
+  }
+
   @override
   void dispose() {
+    disposeDraft();
     for (final c in [
       _senderNameController,
       _senderPhoneController,
@@ -189,6 +246,7 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
             isRoundTrip: _isRoundTrip,
             codAmount: double.tryParse(_codAmountController.text) ?? 0.0,
           );
+      finishDraft(); // booked — nothing to come back to
 
       if (!mounted) return;
       await showSuccessMoment(
@@ -225,11 +283,19 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen> {
             child: Text('Could not load vehicles.\n$e',
                 textAlign: TextAlign.center)),
         data: (vehicles) {
+          final wantId = _draftVehicleId;
+          if (wantId != null && vehicles.isNotEmpty) {
+            _vehicle = vehicles.where((v) => v.id == wantId).firstOrNull ?? _vehicle;
+            _draftVehicleId = null;
+          }
           _vehicle ??= vehicles.isNotEmpty ? vehicles.first : null;
           final fare = _fare;
           final fareLabel = fare == null ? '—' : Formatters.currency(fare);
 
           return BookingStepper(
+            key: ValueKey('parcel-steps-$draftGeneration'),
+            initialStep: draftStep,
+            onStepChanged: onDraftStep,
             fare: fareLabel,
             finishLabel: 'Book Parcel Delivery',
             finishLoading: _submitting,

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
+import '../../../../core/services/last_place.dart';
 import '../../../../core/services/route_service.dart';
 import '../../../../core/utils/fare_estimator.dart';
 import '../../../../core/utils/formatters.dart';
@@ -43,7 +44,8 @@ class BookHaulingScreen extends ConsumerStatefulWidget {
   ConsumerState<BookHaulingScreen> createState() => _BookHaulingScreenState();
 }
 
-class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
+class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen>
+    with BookingDraftMixin<BookHaulingScreen> {
   final _senderName = TextEditingController();
   final _senderPhone = TextEditingController();
   final _pickupAddress = TextEditingController();
@@ -69,9 +71,60 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
   bool _submitting = false;
   ({int drivers, int onlineNow})? _availability;
 
+  // ── Draft: reopened here after Android closed the app (LastPlace) ─────
+
+  @override
+  String get draftForm => 'hauling';
+
+  String? _draftVehicleId;
+
+  Map<String, TextEditingController> get _draftFields => {
+        'senderName': _senderName,
+        'senderPhone': _senderPhone,
+        'pickupAddress': _pickupAddress,
+        'receiverName': _receiverName,
+        'receiverPhone': _receiverPhone,
+        'dropoffAddress': _dropoffAddress,
+        'description': _description,
+        'weight': _weight,
+        'instructions': _instructions,
+      };
+
+  @override
+  Map<String, dynamic> draftToJson() => {
+        for (final e in _draftFields.entries) e.key: e.value.text,
+        'pickupPoint': LastPlace.pointToJson(_pickupPoint),
+        'dropoffPoint': LastPlace.pointToJson(_dropoffPoint),
+        'category': _category,
+        'helpers': _helpers,
+        'vehicleId': _vehicle?.id,
+        'payment': _paymentMethod,
+        'scheduledFor': _scheduledFor?.toIso8601String(),
+      };
+
+  @override
+  void draftFromJson(Map<String, dynamic> d) {
+    for (final e in _draftFields.entries) {
+      e.value.text = d[e.key] as String? ?? '';
+    }
+    _pickupPoint = LastPlace.pointFromJson(d['pickupPoint']);
+    _dropoffPoint = LastPlace.pointFromJson(d['dropoffPoint']);
+    final category = d['category'] as String?;
+    if (_categoryIcons.containsKey(category)) _category = category!;
+    _helpers = ((d['helpers'] as num?)?.toInt() ?? 0).clamp(0, 4);
+    _draftVehicleId = d['vehicleId'] as String?;
+    _paymentMethod = d['payment'] as String? ?? 'cash';
+    final at = DateTime.tryParse(d['scheduledFor'] as String? ?? '');
+    _scheduledFor = at != null && at.isAfter(DateTime.now()) ? at : null;
+  }
+
+  @override
+  void afterDraftRestored() => _refreshRoute();
+
   @override
   void initState() {
     super.initState();
+    initDraft();
     ref.read(customerRepositoryProvider).fetchHaulingHelperFee().then((fee) {
       if (mounted) setState(() => _helperFee = fee);
     });
@@ -82,6 +135,7 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
 
   @override
   void dispose() {
+    disposeDraft();
     for (final c in [
       _senderName, _senderPhone, _pickupAddress, _receiverName, _receiverPhone,
       _dropoffAddress, _description, _weight, _instructions,
@@ -223,6 +277,7 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
             paymentMethod: _paymentMethod,
             distanceKm: _distanceKm,
           );
+      finishDraft(); // booked — nothing to come back to
       if (!mounted) return;
       await showSuccessMoment(
         context,
@@ -256,10 +311,18 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen> {
         loading: () => const SkeletonList(count: 3),
         error: (e, _) => Center(child: Text('Could not load vehicles.\n$e', textAlign: TextAlign.center)),
         data: (vehicles) {
+          final wantId = _draftVehicleId;
+          if (wantId != null && vehicles.isNotEmpty) {
+            _vehicle = vehicles.where((v) => v.id == wantId).firstOrNull ?? _vehicle;
+            _draftVehicleId = null;
+          }
           _vehicle ??= vehicles.isNotEmpty ? vehicles.first : null;
           final vehicleFare = _vehicleFare;
           final fareLabel = vehicleFare == null ? '—' : Formatters.currency(vehicleFare + _helpersFare);
           return BookingStepper(
+            key: ValueKey('hauling-steps-$draftGeneration'),
+            initialStep: draftStep,
+            onStepChanged: onDraftStep,
             fare: fareLabel,
             finishLabel: 'Book Hauling',
             finishLoading: _submitting,

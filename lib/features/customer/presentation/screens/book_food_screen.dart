@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/services/geocoding_service.dart';
+import '../../../../core/services/last_place.dart';
 import '../../../../core/services/location_service.dart';
 import '../../../../core/utils/fare_estimator.dart';
 import '../../../../core/utils/formatters.dart';
@@ -49,10 +50,21 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
   /// Customer chose "Anywhere" — don't auto-pick a saved address again.
   bool _anywhere = false;
 
+  /// Reopened by the dashboard if Android closes the app here (LastPlace).
+  String? _openFormUser;
+
   @override
   void initState() {
     super.initState();
+    _openFormUser = ref.read(authNotifierProvider).profile?.id;
+    if (_openFormUser != null) LastPlace.setOpenForm(_openFormUser!, 'food');
     _load();
+  }
+
+  @override
+  void dispose() {
+    if (_openFormUser != null) LastPlace.setOpenForm(_openFormUser!, null);
+    super.dispose();
   }
 
   Future<void> _load() async {

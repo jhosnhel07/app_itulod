@@ -24,6 +24,7 @@ import '../../data/rider_location_broadcaster.dart';
 import '../../data/rider_repository.dart';
 import '../../../customer/presentation/widgets/notifications_tab.dart';
 import '../../../../core/services/app_alerts.dart';
+import '../../../../core/services/last_place.dart';
 import '../../../../core/services/push_service.dart';
 
 final riderOnlineStatusProvider = StateNotifierProvider<RiderOnlineNotifier, AsyncValue<bool>>((ref) {
@@ -172,6 +173,8 @@ class RiderDashboardScreen extends ConsumerStatefulWidget {
 class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
     with RealtimeRefreshMixin {
   int _index = 0;
+  /// Last tab written to LastPlace.
+  int _savedIndex = 0;
   /// Bottom bar shrinks while the page scrolls down.
   bool _navCompact = false;
 
@@ -222,6 +225,11 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
       final userId = ref.read(authNotifierProvider).profile?.id;
       if (mounted && userId != null) {
         alerts.start(userId: userId);
+        // Android closed the app in the background: open the tab you were on
+        // (LastPlace; web: the #section in the address).
+        LastPlace.tab('rider', userId).then((tab) {
+          if (mounted && tab != null && tab > 0 && tab <= 5) setState(() => _index = _savedIndex = tab);
+        });
         ref.read(pushServiceProvider).register().then((ok) => alerts.pushActive = ok);
       }
     });
@@ -274,6 +282,10 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
   @override
   Widget build(BuildContext context) {
     final profile = ref.watch(authNotifierProvider).profile;
+    if (_index != _savedIndex && profile != null) {
+      _savedIndex = _index;
+      LastPlace.saveTab('rider', profile.id, _index);
+    }
     final application = ref.watch(authNotifierProvider).riderApplication;
     final approved = application?.status == ApplicationStatus.approved;
     final onlineAsync = ref.watch(riderOnlineStatusProvider);

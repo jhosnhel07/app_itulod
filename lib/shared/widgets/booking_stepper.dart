@@ -30,6 +30,9 @@ class BookingStepper extends StatefulWidget {
   final bool finishLoading;
   final VoidCallback? onChanged;
   final List<(String, String)> Function()? summary;
+  /// Step to open on — the one a saved draft was on (LastPlace).
+  final int initialStep;
+  final ValueChanged<int>? onStepChanged;
 
   const BookingStepper({
     super.key,
@@ -40,6 +43,8 @@ class BookingStepper extends StatefulWidget {
     this.finishLoading = false,
     this.onChanged,
     this.summary,
+    this.initialStep = 0,
+    this.onStepChanged,
   });
 
   @override
@@ -50,10 +55,28 @@ class _BookingStepperState extends State<BookingStepper> {
   late final List<GlobalKey<FormState>> _formKeys =
       List.generate(widget.steps.length, (_) => GlobalKey<FormState>());
   final _scroll = ScrollController();
-  int _current = 0;
+  late int _current = widget.initialStep.clamp(0, _lastIndex);
 
   bool get _hasConfirmStep => widget.summary != null;
   int get _lastIndex => widget.steps.length - (_hasConfirmStep ? 0 : 1);
+
+  @override
+  void initState() {
+    super.initState();
+    // Reopened past the first step: go back to the first step whose fields
+    // aren't filled in any more.
+    if (_current > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        for (var i = 0; i < _current; i++) {
+          if (!(_formKeys[i].currentState?.validate() ?? true)) {
+            _go(i);
+            return;
+          }
+        }
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -64,6 +87,7 @@ class _BookingStepperState extends State<BookingStepper> {
   void _go(int i) {
     FocusScope.of(context).unfocus();
     setState(() => _current = i.clamp(0, _lastIndex));
+    widget.onStepChanged?.call(_current);
     if (_scroll.hasClients) _scroll.jumpTo(0);
   }
 
