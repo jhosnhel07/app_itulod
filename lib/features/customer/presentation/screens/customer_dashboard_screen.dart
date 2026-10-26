@@ -14,6 +14,9 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../widgets/customer_bookings_tab.dart';
 import '../widgets/customer_home_tab.dart';
 import '../widgets/notifications_tab.dart';
+import '../../../chat/presentation/providers/chat_provider.dart';
+import '../../../chat/presentation/screens/chat_screen.dart';
+import '../../../chat/presentation/screens/messages_screen.dart';
 import 'book_food_screen.dart';
 import 'book_hauling_screen.dart';
 import 'book_parcel_screen.dart';
@@ -36,7 +39,8 @@ class _CustomerDashboardScreenState
   /// Bottom bar shrinks while the page scrolls down.
   bool _navCompact = false;
 
-  static const _titles = ['Home', 'My Bookings', 'Notifications', 'Profile'];
+  static const _messagesTab = 2, _notificationsTab = 3, _profileTab = 4;
+  static const _titles = ['Home', 'My Bookings', 'Messages', 'Notifications', 'Profile'];
 
   /// Stopped when the dashboard goes (log out) — ref can't be used in dispose.
   AppAlerts? _alerts;
@@ -58,7 +62,11 @@ class _CustomerDashboardScreenState
         _alerts?.start(userId: userId);
         _restorePlace(userId);
         // Push to this phone, even with the app closed (Firebase).
-        ref.read(pushServiceProvider).register().then((ok) => _alerts?.pushActive = ok);
+        ref.read(pushServiceProvider).register().then((ok) {
+          _alerts?.pushActive = ok;
+          // a tapped chat notification opens that chat (notifications.link)
+          ref.read(pushServiceProvider).listenForTaps(_openLink);
+        });
       }
     });
     startRealtime(
@@ -107,6 +115,13 @@ class _CustomerDashboardScreenState
     }
   }
 
+  void _openLink(String link) {
+    final route = ChatScreen.forLink(link);
+    if (route == null || !mounted) return;
+    setState(() => _index = _messagesTab);
+    Navigator.of(context).push(route);
+  }
+
   @override
   Widget build(BuildContext context) {
     final profile = ref.watch(authNotifierProvider).profile;
@@ -119,6 +134,7 @@ class _CustomerDashboardScreenState
     final tabs = [
       const CustomerHomeTab(),
       const CustomerBookingsTab(),
+      const MessagesView(),
       NotificationsTab(onOpenBookings: () => setState(() => _index = 1)),
       const ProfileScreen(),
     ];
@@ -161,9 +177,9 @@ class _CustomerDashboardScreenState
                   ),
                   // Profile picture → My profile, Dark mode, Log out.
                   AccountMenuButton(
-                    onOpenProfile: () => setState(() => _index = 3),
+                    onOpenProfile: () => setState(() => _index = _profileTab),
                     onOpenNotifications: () {
-                      setState(() => _index = 2);
+                      setState(() => _index = _notificationsTab);
                       ref.invalidate(unreadNotificationsProvider);
                     },
                     unread: unreadAsync.value ?? 0,
@@ -192,6 +208,12 @@ class _CustomerDashboardScreenState
         items: [
           const LiquidNavItem(icon: AppIcons.home, activeIcon: AppIcons.homeActive, label: 'Home'),
           const LiquidNavItem(icon: AppIcons.history, activeIcon: AppIcons.history, label: 'Bookings'),
+          LiquidNavItem(
+            icon: AppIcons.messages,
+            activeIcon: AppIcons.messagesActive,
+            label: 'Messages',
+            badge: ref.watch(unreadMessagesProvider),
+          ),
           // Notifications and Profile open from the profile picture at the top
         ],
       ),

@@ -74,8 +74,35 @@ class PushService {
     }
   }
 
+  /// The `link` of a tapped push (e.g. `messages/transport/<id>`, web
+  /// notifications.link) — [onLink] runs for the push that opened the app
+  /// and for every one tapped while it was in the background. Call after
+  /// [register], which starts Firebase.
+  StreamSubscription<RemoteMessage>? _tapSub;
+  Future<void> listenForTaps(void Function(String link) onLink) async {
+    try {
+      final fm = await _messaging();
+      if (fm == null) return;
+      String? linkOf(RemoteMessage? m) {
+        final link = m?.data['link']?.toString();
+        return link == null || link.isEmpty ? null : link;
+      }
+      final first = linkOf(await fm.getInitialMessage());
+      if (first != null) onLink(first);
+      await _tapSub?.cancel();
+      _tapSub = FirebaseMessaging.onMessageOpenedApp.listen((m) {
+        final link = linkOf(m);
+        if (link != null) onLink(link);
+      });
+    } catch (e, s) {
+      AppLog.warn('PushService: tap handling unavailable', e, s);
+    }
+  }
+
   void dispose() {
     _refreshSub?.cancel();
     _refreshSub = null;
+    _tapSub?.cancel();
+    _tapSub = null;
   }
 }

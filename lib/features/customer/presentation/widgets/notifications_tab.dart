@@ -7,6 +7,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../data/customer_repository.dart';
+import '../../../chat/presentation/screens/chat_screen.dart';
 import 'customer_bookings_tab.dart'
     show authProfileIdProvider, customerHistoryProvider;
 
@@ -140,6 +141,7 @@ final _bookingRe = RegExp(
 );
 
 IconData _iconFor(Map<String, dynamic> n) {
+  if ((n['link']?.toString() ?? '').startsWith('messages/')) return Icons.chat_bubble_rounded;
   final t = '${n['title']} ${n['message']}'.toLowerCase();
   if (RegExp(r'refund|wallet|payment|fee|tip|bonus').hasMatch(t)) return Icons.account_balance_wallet_rounded;
   if (RegExp(r'cancel|expired|no-show|not approved').hasMatch(t)) return Icons.error_outline_rounded;
@@ -162,6 +164,12 @@ class _NotificationRow extends ConsumerWidget {
       ref.read(customerRepositoryProvider).markNotificationRead(id).then((_) {
         NotificationsTab._refresh(ref);
       }).catchError((Object _) {});
+    }
+    // A chat message opens its conversation (notifications.link, web sql/046).
+    final chat = ChatScreen.forLink(n['link']?.toString());
+    if (chat != null) {
+      await Navigator.of(context).push(chat);
+      return;
     }
     await showModalBottomSheet<void>(
       context: context,

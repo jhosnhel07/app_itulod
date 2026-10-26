@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show RealtimeChannel, PostgresChangeEvent, PostgresChangeFilter, PostgresChangeFilterType;
 import '../../../../core/supabase/supabase_client.dart';
@@ -25,6 +26,9 @@ import '../../data/rider_repository.dart';
 import '../../../customer/presentation/widgets/notifications_tab.dart';
 import '../../../../core/services/app_alerts.dart';
 import '../../../../core/services/last_place.dart';
+import '../../../chat/presentation/providers/chat_provider.dart';
+import '../../../chat/presentation/screens/chat_screen.dart';
+import '../../../chat/presentation/screens/messages_screen.dart';
 import '../../../../core/services/push_service.dart';
 
 final riderOnlineStatusProvider = StateNotifierProvider<RiderOnlineNotifier, AsyncValue<bool>>((ref) {
@@ -230,7 +234,14 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
         LastPlace.tab('rider', userId).then((tab) {
           if (mounted && tab != null && tab > 0 && tab <= 5) setState(() => _index = _savedIndex = tab);
         });
-        ref.read(pushServiceProvider).register().then((ok) => alerts.pushActive = ok);
+        ref.read(pushServiceProvider).register().then((ok) {
+          alerts.pushActive = ok;
+          // a tapped chat notification opens that chat (notifications.link)
+          ref.read(pushServiceProvider).listenForTaps((link) {
+            final route = ChatScreen.forLink(link);
+            if (route != null && mounted) Navigator.of(context).push(route);
+          });
+        });
       }
     });
     // Live GPS to the customer while a job is accepted/ongoing — the web's
@@ -290,6 +301,7 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
     final approved = application?.status == ApplicationStatus.approved;
     final onlineAsync = ref.watch(riderOnlineStatusProvider);
     final unread = ref.watch(unreadNotificationsProvider).valueOrNull ?? 0;
+    final unreadMessages = ref.watch(unreadMessagesProvider);
 
     final tabs = [
       RiderHomeTab(
@@ -343,6 +355,17 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
                   ),
                   // Profile picture → My profile, Notifications, Dark mode, Log out
                   // (the only way to them — no bell or Profile tab in the bar).
+                  // Messages (web: the sidebar / top-bar chat icon)
+                  IconButton(
+                    tooltip: 'Messages',
+                    onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const MessagesScreen())),
+                    icon: Badge(
+                      isLabelVisible: unreadMessages > 0,
+                      label: Text('$unreadMessages'),
+                      child: const FaIcon(AppIcons.messages, color: Colors.white, size: 20),
+                    ),
+                  ),
                   AccountMenuButton(
                     onOpenProfile: () => setState(() => _index = 5),
                     onOpenNotifications: () => _openNotifications(context),

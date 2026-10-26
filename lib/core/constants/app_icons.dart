@@ -33,4 +33,6 @@ class AppIcons {
   static const FaIconData requests = FontAwesomeIcons.inbox;
   static const FaIconData trip = FontAwesomeIcons.route;
   static const FaIconData earnings = FontAwesomeIcons.sackDollar;
+  static const FaIconData messages = FontAwesomeIcons.commentDots;
+  static const FaIconData messagesActive = FontAwesomeIcons.solidCommentDots;
 }
