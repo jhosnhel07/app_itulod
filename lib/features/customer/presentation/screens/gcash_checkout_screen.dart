@@ -2,11 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../../../core/constants/app_colors.dart';
 
-/// Hosts the PayMongo GCash checkout page and pops with `true`/`false` once
-/// PayMongo redirects to the success/failed URL our Edge Function serves.
-/// The actual payment_status update on the booking is driven by the
-/// PayMongo webhook, not by this screen — this just gives immediate UI
-/// feedback.
+/// Where PayMongo sent the shopper back: success or failed, and which booking
+/// (or wallet top-up) it was — the receipt popup takes it from there.
+class GcashReturn {
+  final bool success;
+  final String? type;
+  final String? id;
+  const GcashReturn({required this.success, this.type, this.id});
+}
+
+/// Hosts the PayMongo GCash checkout page and pops with a [GcashReturn] once
+/// PayMongo redirects to the success/failed URL our Edge Function serves
+/// (payment-return.html?type=…&id=…&result=…). Closing it pops null.
 class GcashCheckoutScreen extends StatefulWidget {
   final String checkoutUrl;
 
@@ -38,9 +45,12 @@ class _GcashCheckoutScreenState extends State<GcashCheckoutScreen> {
             // PayMongo sends the customer back to the web's payment-return.html
             // (create-payment / wallet-topup redirect URLs).
             if (url.contains('payment-return.html')) {
-              final uri = Uri.parse(url);
-              final success = uri.queryParameters['status'] == 'success' || uri.queryParameters['result'] == 'success';
-              Navigator.of(context).pop(success);
+              final q = Uri.parse(url).queryParameters;
+              Navigator.of(context).pop(GcashReturn(
+                success: q['status'] == 'success' || q['result'] == 'success',
+                type: q['type'],
+                id: q['id'],
+              ));
               return NavigationDecision.prevent;
             }
             return NavigationDecision.navigate;
@@ -59,7 +69,7 @@ class _GcashCheckoutScreenState extends State<GcashCheckoutScreen> {
         foregroundColor: Colors.white,
         leading: IconButton(
           icon: const Icon(Icons.close),
-          onPressed: () => Navigator.of(context).pop(false),
+          onPressed: () => Navigator.of(context).pop(),
         ),
       ),
       body: Stack(

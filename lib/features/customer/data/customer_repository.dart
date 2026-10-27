@@ -593,6 +593,48 @@ class CustomerRepository {
     return url;
   }
 
+  /// Asks the server to settle a GCash payment now: after Authorize it
+  /// charges the payment (web sync-payment-status) and returns
+  /// 'paid' / 'failed' / 'pending'. [type] is a booking kind or 'wallet'.
+  Future<String?> syncPayment(String type, String id) async {
+    try {
+      final res = await _supabase.functions.invoke('sync-payment-status', body: {'booking_type': type, 'booking_id': id});
+      final data = res.data;
+      return data is Map ? data['payment_status'] as String? : null;
+    } catch (e, s) {
+      AppLog.warn('syncPayment($type, $id) failed', e, s);
+      return null;
+    }
+  }
+
+  /// The receipt row for a booking or wallet top-up (web payment-return.html):
+  /// payment_status, payment_method, paymongo_reference, amount, created_at,
+  /// route — wallet top-ups use their own column names, mapped here.
+  Future<Map<String, dynamic>?> fetchPaymentReceipt(String type, String id) async {
+    const routeCols = {
+      'transport': ', pickup_address, destination_address',
+      'food': ', restaurant_name, delivery_address',
+      'parcel': ', sender_address, receiver_address',
+      'hauling': ', pickup_address, dropoff_address',
+    };
+    try {
+      if (type == 'wallet') {
+        final row = await _supabase.from('wallet_topups').select('status, paymongo_reference, amount, created_at').eq('id', id).maybeSingle();
+        if (row == null) return null;
+        return {...row, 'payment_status': row['status'], 'estimated_fare': row['amount'], 'payment_method': 'gcash'};
+      }
+      final kind = BookingKind.values.firstWhere((k) => k.name == type);
+      return await _supabase
+          .from(kind.tableName)
+          .select('payment_status, payment_method, paymongo_reference, estimated_fare, final_fare, created_at${routeCols[type] ?? ''}')
+          .eq('id', id)
+          .maybeSingle();
+    } catch (e, s) {
+      AppLog.warn('fetchPaymentReceipt($type, $id) failed', e, s);
+      return null;
+    }
+  }
+
   /// Calls the `create-payment` Edge Function to pay for a booking using the wallet balance.
   Future<void> payWithWallet(String bookingId, {String bookingType = 'transport'}) async {
     final data = await _invoke(

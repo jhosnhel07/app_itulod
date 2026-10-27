@@ -9,6 +9,7 @@ import '../../../../core/utils/formatters.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../providers/wallet_provider.dart';
 import 'gcash_checkout_screen.dart';
+import '../widgets/payment_receipt_dialog.dart';
 
 class WalletScreen extends ConsumerWidget {
   const WalletScreen({super.key});
@@ -167,26 +168,23 @@ class WalletScreen extends ConsumerWidget {
                           try {
                             final url = await ref.read(walletProvider.notifier).topUpWallet(amount);
                             if (url != null && context.mounted) {
-                              final success = await Navigator.of(context).push<bool>(
+                              final back = await Navigator.of(context).push<GcashReturn>(
                                 MaterialPageRoute(
                                   builder: (_) => GcashCheckoutScreen(checkoutUrl: url),
                                 ),
                               );
-                              
+
                               if (context.mounted) {
+                                final pageContext = Navigator.of(context, rootNavigator: true).context;
                                 Navigator.pop(context); // Close the top-up dialog
-                                if (success == true) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Top-up successful!')),
-                                  );
-                                  // Refresh wallet balance
-                                  ref.invalidate(walletProvider);
-                                  ref.invalidate(walletTransactionsProvider);
-                                } else if (success == false) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Top-up was cancelled or failed.')),
-                                  );
+                                // The receipt, like the web's payment-return page;
+                                // it credits the wallet as soon as GCash is authorized.
+                                if (back?.id != null) {
+                                  await showPaymentReceipt(pageContext,
+                                      type: 'wallet', id: back!.id!, failed: !back.success);
                                 }
+                                ref.invalidate(walletProvider);
+                                ref.invalidate(walletTransactionsProvider);
                               }
                             }
                           } catch (e) {

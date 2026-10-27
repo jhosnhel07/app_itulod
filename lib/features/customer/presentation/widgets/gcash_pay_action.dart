@@ -8,7 +8,7 @@ import '../../../../shared/models/booking_models.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../data/customer_repository.dart';
 import '../providers/wallet_provider.dart';
-import '../screens/booking_receipt_screen.dart';
+import 'payment_receipt_dialog.dart';
 import '../screens/gcash_checkout_screen.dart';
 import 'customer_bookings_tab.dart' show customerHistoryProvider;
 import 'customer_home_tab.dart' show customerHomeSummaryProvider;
@@ -38,14 +38,18 @@ Future<void> payBookingOnline(
       await repo.payWithWallet(booking.id, bookingType: bookingType);
       ref.invalidate(walletProvider);
       if (!context.mounted) return;
-      await _showPaid(context, booking);
+      await showPaymentReceipt(context, type: bookingType, id: booking.id);
     } else if (method == 'gcash') {
       final checkoutUrl = await repo.createGcashCheckoutUrl(booking.id, bookingType: bookingType);
       if (!context.mounted) return;
-      final success = await Navigator.of(context).push<bool>(
+      final back = await Navigator.of(context).push<GcashReturn>(
         MaterialPageRoute(builder: (_) => GcashCheckoutScreen(checkoutUrl: checkoutUrl)),
       );
-      if (context.mounted && success == true) await _showPaid(context, booking);
+      // Back from PayMongo (Authorize or Fail): the receipt, like the web's
+      // payment-return page — it settles the payment while it shows.
+      if (context.mounted && back != null) {
+        await showPaymentReceipt(context, type: bookingType, id: booking.id, failed: !back.success);
+      }
     }
   } catch (e) {
     if (context.mounted) {
@@ -59,29 +63,6 @@ Future<void> payBookingOnline(
   }
   ref.invalidate(customerHistoryProvider);
   ref.invalidate(customerHomeSummaryProvider);
-}
-
-/// Rides get the full receipt screen (it polls until the webhook settles);
-/// food/parcel just confirm — their status shows in My Bookings.
-Future<void> _showPaid(BuildContext context, BookingBase booking) async {
-  if (booking is TransportBookingModel) {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BookingReceiptScreen(
-          booking: booking,
-          gcashPaid: true,
-          notifyOnDone: false,
-        ),
-      ),
-    );
-  } else {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Payment received — it will show as paid in My Bookings shortly.'),
-        backgroundColor: AppColors.success,
-      ),
-    );
-  }
 }
 
 /// "You're about to be charged ₱X with GCash" — the confirm step before the
