@@ -456,6 +456,18 @@ class _ActiveBookingCard extends ConsumerWidget {
             ),
             const SizedBox(height: 8),
           ],
+          // Until the trip starts (pending / accepted), like My Bookings.
+          if (booking.canCancel) ...[
+            AppButton(
+              text: 'Cancel booking',
+              type: AppButtonType.danger,
+              onPressed: () {
+                Navigator.pop(sheetContext);
+                showCancellationDialog(context, ref, booking);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
           AppButton(
             text: 'Report an issue with this booking',
             icon: Icons.report_problem_outlined,
