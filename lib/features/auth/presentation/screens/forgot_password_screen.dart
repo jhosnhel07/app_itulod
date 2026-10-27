@@ -145,7 +145,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             Text(
               switch (_step) {
                 1 => "Enter the email or mobile number on your account. We'll email you a 6-digit code.",
-                2 => 'We sent a 6-digit code to $_sentTo. Check your inbox (and spam).',
+                2 => 'We sent a 6-digit code to $_sentTo. The email is from Supabase Auth, titled “Confirm reauthentication” — check your inbox (and spam).',
                 _ => 'Code accepted. Create your new password.',
               },
               key: const Key('fp-sub'),

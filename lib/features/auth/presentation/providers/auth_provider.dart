@@ -412,19 +412,6 @@ class AuthNotifier extends StateNotifier<AppAuthState> {
     }
   }
 
-  Future<bool> resetPassword(String emailOrUsername) async {
-    try {
-      await _repo.resetPasswordForEmail(emailOrUsername);
-      return true;
-    } on AuthException catch (e) {
-      state = state.copyWith(errorMessage: e.message);
-      return false;
-    } catch (e) {
-      state = state.copyWith(errorMessage: e.toString().replaceAll('Exception: ', ''));
-      return false;
-    }
-  }
-
   Future<void> signOut() async {
     state = state.copyWith(status: AuthStatus.loading);
     await LastPlace.clearAll(); // the next person on this phone starts on Home
