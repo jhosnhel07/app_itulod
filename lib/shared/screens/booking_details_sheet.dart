@@ -47,6 +47,8 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
   List<int> _riderRatings = const [];
   bool _loadingRider = true;
   bool _showMap = false;
+  /// A finished trip only offers View chat when there was a chat.
+  bool _hadChat = false;
 
   BookingBase get b => widget.booking;
 
@@ -99,8 +101,23 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
           AppLog.warn('BookingDetailsSheet: ratings lookup failed', e, s);
         }
       }
+      var hadChat = false;
+      if (riderId != null && riderId.isNotEmpty && !b.canSendChat) {
+        try {
+          final rows = await SupabaseConfig.client
+              .from('booking_messages')
+              .select('id')
+              .eq('booking_type', b.kind.name)
+              .eq('booking_id', b.id)
+              .limit(1);
+          hadChat = (rows as List).isNotEmpty;
+        } catch (e, s) {
+          AppLog.warn('BookingDetailsSheet: chat lookup failed', e, s);
+        }
+      }
       if (!mounted) return;
       setState(() {
+        _hadChat = hadChat;
         _riderProfile = results[0];
         _riderApplication = results[1];
         _vehicle = results[2];
@@ -160,17 +177,6 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
                     _vehicleSection(),
                     _documentsSection(),
                     _proofSection(),
-                    // The customer gets "Message" on the rider card during a
-                    // trip; everyone else (the rider, finished trips) uses this.
-                    if (b.hasRider && !(_isCustomerViewer && b.canSendChat))
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 18),
-                        child: OutlinedButton.icon(
-                          onPressed: () => Navigator.push(context, ChatScreen.route(b)),
-                          icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
-                          label: Text(b.canSendChat ? 'Messages' : 'Messages (read-only)'),
-                        ),
-                      ),
                     if (b.cancelledReason != null && b.cancelledReason!.isNotEmpty)
                       _section('Cancellation', [
                         Text(b.cancelledReason!, style: AppTypography.body.copyWith(color: AppColors.danger)),
@@ -208,9 +214,6 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
       },
     );
   }
-
-  bool get _isCustomerViewer =>
-      ref.read(authNotifierProvider).profile?.id == b.customerId;
 
   // ── Header: kind + status, big fare, progress timeline ───────────────
 
@@ -612,11 +615,13 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
                       ),
                   ],
                 ),
-                if (!isOwnJob && tripActive) ...[
+                // The chat lives here only: Message during the trip, View chat
+                // (read-only) after — no second Messages button further down.
+                if (!isOwnJob && (tripActive || _hadChat)) ...[
                   const SizedBox(height: 14),
                   Row(
                     children: [
-                      if (phone != null && phone.isNotEmpty) ...[
+                      if (tripActive && phone != null && phone.isNotEmpty) ...[
                         Expanded(
                           child: FilledButton.icon(
                             onPressed: () => launchUrl(Uri(scheme: 'tel', path: phone)),
@@ -630,7 +635,7 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
                         child: OutlinedButton.icon(
                           onPressed: () => Navigator.push(context, ChatScreen.route(b)),
                           icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
-                          label: const Text('Message'),
+                          label: Text(tripActive ? 'Message' : 'View chat'),
                         ),
                       ),
                     ],
