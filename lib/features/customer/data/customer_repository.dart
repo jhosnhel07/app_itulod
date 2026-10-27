@@ -140,10 +140,7 @@ class CustomerRepository {
   // ── Create bookings ───────────────────────────────────────────────────
 
   /// Places a ride. Mirrors the web's ride form (customer.js wireRideForm):
-  /// GCash/wallet payment is a separate later step, and a promo code is
-  /// applied afterwards through [redeemPromo] — the `redeem-promo` function
-  /// rejects a booking that already carries a promo_code, so it must never be
-  /// written on insert.
+  /// GCash/wallet payment is a separate later step.
   Future<TransportBookingModel> createTransportBooking({
     required String customerId,
     required VehicleModel vehicle,
@@ -203,9 +200,6 @@ class CustomerRepository {
 
     return TransportBookingModel.fromJson(row);
   }
-
-  // Promos are picked and applied through features/promos (PromoRepository,
-  // redeem-promo — any service, web sql/053).
 
   /// Places a cart-based food order exactly like the web checkout
   /// (customer.js wireFoodForm): the order row, then one
@@ -267,7 +261,7 @@ class CustomerRepository {
     return FoodDeliveryModel.fromJson(row);
   }
 
-  /// Returns the new booking's id (a picked promo is applied to it).
+  /// Returns the new booking's id.
   Future<String> createParcelBooking({
     required String customerId,
     required VehicleModel vehicle,

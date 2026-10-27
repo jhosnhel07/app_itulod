@@ -4,15 +4,12 @@ import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/utils/formatters.dart';
-import '../../../../shared/models/booking_models.dart';
 import '../../../../shared/models/vehicle_model.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/booking_stepper.dart';
 import '../../../../shared/widgets/success_moment.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/customer_repository.dart';
-import '../../../promos/data/promo_repository.dart';
-import '../../../promos/presentation/widgets/promo_picker.dart';
 import 'booking_receipt_screen.dart';
 
 /// Shown after the customer fills out the ride form and before the booking
@@ -61,13 +58,9 @@ class BookingConfirmationScreen extends ConsumerStatefulWidget {
 
 class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationScreen> {
   bool _processing = false;
-  /// The promo picked from My promos (web sql/053), applied once the ride is placed.
-  String? _promoCode;
 
   bool get _paysOnline => widget.paymentMethod == 'gcash' || widget.paymentMethod == 'wallet';
-  double get _discount => PromoPicker.discountOf(
-      ref.watch(myPromosProvider).valueOrNull ?? const [], _promoCode, BookingKind.transport, widget.fare);
-  double get _total => (widget.fare - _discount).clamp(0, double.infinity).toDouble();
+  double get _total => widget.fare;
 
   Future<void> _confirm() async {
     setState(() => _processing = true);
@@ -75,7 +68,7 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
     final messenger = ScaffoldMessenger.of(context);
     try {
       final profile = ref.read(authNotifierProvider).profile!;
-      BookingBase booking = await repo.createTransportBooking(
+      final booking = await repo.createTransportBooking(
         customerId: profile.id,
         vehicle: widget.vehicle,
         pickupAddress: widget.pickupAddress,
@@ -89,15 +82,6 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
         passengers: widget.passengers,
       );
       widget.onBooked?.call();
-
-      // The promo is redeemed server-side against the placed booking; a
-      // rejection (already used, expired…) leaves the ride booked at full fare.
-      final saved = await applyPickedPromo(ref, messenger,
-          code: _promoCode, kind: BookingKind.transport, bookingId: booking.id);
-      if (saved > 0) {
-        final refreshed = await repo.fetchHistory(BookingKind.transport, profile.id);
-        booking = refreshed.firstWhere((b) => b.id == booking.id, orElse: () => booking);
-      }
 
       // The booking is placed only — online payment (when chosen) is started
       // later from Home or My Bookings, not inline here.
@@ -113,7 +97,7 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => BookingReceiptScreen(
-            booking: booking as TransportBookingModel,
+            booking: booking,
             checkoutAttempted: false,
           ),
         ),
@@ -171,13 +155,6 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
               ),
             ),
             const SizedBox(height: 16),
-            PromoPicker(
-              kind: BookingKind.transport,
-              fare: widget.fare,
-              selected: _promoCode,
-              onChanged: (c) => setState(() => _promoCode = c),
-            ),
-            const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
@@ -187,12 +164,6 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
               ),
               child: Column(
                 children: [
-                  if (_discount > 0) ...[
-                    _totalRow('Fare', Formatters.currency(widget.fare)),
-                    const SizedBox(height: 4),
-                    _totalRow('Promo discount', '-${Formatters.currency(_discount)}'),
-                    const SizedBox(height: 12),
-                  ],
                   Text('TOTAL AMOUNT',
                       style: AppTypography.overline.copyWith(color: Colors.white70)),
                   const SizedBox(height: 6),
@@ -221,14 +192,6 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
       ),
     );
   }
-
-  Widget _totalRow(String label, String value) => Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: AppTypography.caption.copyWith(color: Colors.white70)),
-          Text(value, style: AppTypography.caption.copyWith(color: Colors.white70)),
-        ],
-      );
 
   Widget _row(String label, String value) {
     return Padding(

@@ -79,8 +79,6 @@ class BookingBase {
   final bool? cancellationFeePaid;
   /// Last change to the row — for a finished booking, when it ended.
   final DateTime? updatedAt;
-  final String? promoCode;
-  final double? discountAmount;
 
   const BookingBase({
     required this.id,
@@ -104,8 +102,6 @@ class BookingBase {
     this.cancellationFee,
     this.cancellationFeePaid,
     this.updatedAt,
-    this.promoCode,
-    this.discountAmount,
   });
 
   bool get isActive => status == 'pending' || status == 'accepted' || status == 'ongoing';
@@ -265,8 +261,6 @@ class TransportBookingModel extends BookingBase {
     super.cancellationFee,
     super.cancellationFeePaid,
     super.updatedAt,
-    super.promoCode,
-    super.discountAmount,
   }) : super(kind: BookingKind.transport);
 
   factory TransportBookingModel.fromJson(Map<String, dynamic> json) {
@@ -299,8 +293,6 @@ class TransportBookingModel extends BookingBase {
       cancellationFee: _num(json['cancellation_fee']),
       cancellationFeePaid: json['cancellation_fee_paid'] as bool?,
       updatedAt: _parseTimestamp(json['updated_at']),
-      promoCode: json['promo_code'] as String?,
-      discountAmount: _num(json['discount_amount']),
     );
   }
 }
@@ -351,8 +343,6 @@ class FoodDeliveryModel extends BookingBase {
     super.cancellationFee,
     super.cancellationFeePaid,
     super.updatedAt,
-    super.promoCode,
-    super.discountAmount,
   })  : _deliveryProofUrl = deliveryProofUrl,
         super(kind: BookingKind.food);
 
@@ -391,8 +381,6 @@ class FoodDeliveryModel extends BookingBase {
       cancellationFee: _num(json['cancellation_fee']),
       cancellationFeePaid: json['cancellation_fee_paid'] as bool?,
       updatedAt: _parseTimestamp(json['updated_at']),
-      promoCode: json['promo_code'] as String?,
-      discountAmount: _num(json['discount_amount']),
     );
   }
 }
@@ -449,8 +437,6 @@ class ParcelDeliveryModel extends BookingBase {
     super.cancellationFee,
     super.cancellationFeePaid,
     super.updatedAt,
-    super.promoCode,
-    super.discountAmount,
   })  : _deliveryProofUrl = deliveryProofUrl,
         super(kind: BookingKind.parcel);
 
@@ -493,8 +479,6 @@ class ParcelDeliveryModel extends BookingBase {
       cancellationFee: _num(json['cancellation_fee']),
       cancellationFeePaid: json['cancellation_fee_paid'] as bool?,
       updatedAt: _parseTimestamp(json['updated_at']),
-      promoCode: json['promo_code'] as String?,
-      discountAmount: _num(json['discount_amount']),
     );
   }
 }
@@ -561,8 +545,6 @@ class HaulingBookingModel extends BookingBase {
     super.cancellationFee,
     super.cancellationFeePaid,
     super.updatedAt,
-    super.promoCode,
-    super.discountAmount,
   })  : _deliveryProofUrl = deliveryProofUrl,
         super(kind: BookingKind.hauling);
 
@@ -611,8 +593,6 @@ class HaulingBookingModel extends BookingBase {
       cancellationFee: _num(json['cancellation_fee']),
       cancellationFeePaid: json['cancellation_fee_paid'] as bool?,
       updatedAt: _parseTimestamp(json['updated_at']),
-      promoCode: json['promo_code'] as String?,
-      discountAmount: _num(json['discount_amount']),
     );
   }
 }

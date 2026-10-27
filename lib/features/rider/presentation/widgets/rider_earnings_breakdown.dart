@@ -310,8 +310,6 @@ class _EarningRecordsCardState extends State<EarningRecordsCard> {
               Text('+${Formatters.currency(r.payout)}',
                   style: AppTypography.bodyBold.copyWith(color: AppColors.success)),
               Text('Paid ${Formatters.currency(r.amount)}', style: AppTypography.caption.copyWith(fontSize: 11)),
-              if (r.promo > 0)
-                Text('+${Formatters.currency(r.promo)} promo by iTULOD', style: AppTypography.caption.copyWith(fontSize: 11)),
               if (r.commission > 0)
                 Text('−${Formatters.currency(r.commission)} commission', style: AppTypography.caption.copyWith(fontSize: 11)),
             ],

@@ -12,7 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 /// Admin tools (analytics, rider approvals, bookings, vehicles, restaurants,
-/// payments, promos, announcements, support) live in the web console only.
+/// payments, announcements, support) live in the web console only.
 const String _webAdminUrl = AppStrings.webAdminUrl;
 
 class AdminDashboardScreen extends ConsumerWidget {
@@ -93,7 +93,7 @@ class AdminDashboardScreen extends ConsumerWidget {
                       Text('Admin tools are on the web', style: AppTypography.h3),
                       const SizedBox(height: 6),
                       Text(
-                        'Rider approvals, bookings, customers, vehicles, restaurants, payments, promo codes, announcements and support requests are managed from the web admin console.',
+                        'Rider approvals, bookings, customers, vehicles, restaurants, payments, announcements and support requests are managed from the web admin console.',
                         style: AppTypography.body.copyWith(color: AppColors.neutral600),
                         textAlign: TextAlign.center,
                       ),

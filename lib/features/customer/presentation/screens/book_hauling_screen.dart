@@ -24,7 +24,6 @@ import '../widgets/riders_near_you_map.dart';
 import '../widgets/route_preview_map.dart';
 import 'map_picker_screen.dart';
 import '../widgets/active_booking_banner.dart';
-import '../../../promos/presentation/widgets/promo_picker.dart';
 
 const Map<String, IconData> _categoryIcons = {
   'furniture': Icons.chair_rounded,
@@ -71,8 +70,6 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen>
   DateTime? _scheduledFor;
   String _paymentMethod = 'cash';
   bool _submitting = false;
-  /// The promo picked on the Payment step (web sql/053).
-  String? _promoCode;
   ({int drivers, int onlineNow})? _availability;
 
   // ── Draft: reopened here after Android closed the app (LastPlace) ─────
@@ -261,7 +258,7 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen>
     final messenger = ScaffoldMessenger.of(context);
     try {
       final profile = ref.read(authNotifierProvider).profile!;
-      final hauled = await ref.read(customerRepositoryProvider).createHaulingBooking(
+      await ref.read(customerRepositoryProvider).createHaulingBooking(
             customerId: profile.id,
             vehicle: vehicle,
             pickupAddress: _pickupAddress.text,
@@ -283,8 +280,6 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen>
             distanceKm: _distanceKm,
           );
       finishDraft(); // booked — nothing to come back to
-      // the promo picked on the Payment step (web sql/053)
-      await applyPickedPromo(ref, messenger, code: _promoCode, kind: BookingKind.hauling, bookingId: hauled.id);
       if (!mounted) return;
       await showSuccessMoment(
         context,
@@ -508,13 +503,6 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen>
                     value: _paymentMethod,
                     onChanged: (v) => setState(() => _paymentMethod = v),
                     onlineNote: 'The total shown is the total you pay. You can pay once a driver accepts.',
-                  ),
-                  const SizedBox(height: 12),
-                  PromoPicker(
-                    kind: BookingKind.hauling,
-                    fare: _vehicleFare == null ? 0 : _vehicleFare! + _helpersFare,
-                    selected: _promoCode,
-                    onChanged: (c) => setState(() => _promoCode = c),
                   ),
                   if (_availability != null) ...[
                     const SizedBox(height: 12),
