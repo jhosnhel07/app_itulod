@@ -624,8 +624,13 @@ class CustomerRepository {
       'hauling': ', pickup_address, dropoff_address',
     };
     try {
-      if (type == 'wallet') {
-        final row = await _supabase.from('wallet_topups').select('status, paymongo_reference, amount, created_at').eq('id', id).maybeSingle();
+      // a wallet top-up, or a rider paying what they owe iTULOD (web sql/051)
+      if (type == 'wallet' || type == 'rider') {
+        final row = await _supabase
+            .from(type == 'rider' ? 'rider_payments' : 'wallet_topups')
+            .select('status, paymongo_reference, amount, created_at')
+            .eq('id', id)
+            .maybeSingle();
         if (row == null) return null;
         return {...row, 'payment_status': row['status'], 'estimated_fare': row['amount'], 'payment_method': 'gcash'};
       }

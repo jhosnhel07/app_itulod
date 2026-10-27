@@ -38,7 +38,9 @@ class _PaymentReceiptDialogState extends ConsumerState<PaymentReceiptDialog> {
   String? _status; // paid | failed | pending; null while the first look is running
   bool _checking = true;
 
-  bool get _isWallet => widget.type == 'wallet';
+  /// A rider paying what they owe iTULOD (web sql/051) — read like a top-up.
+  bool get _isRider => widget.type == 'rider';
+  bool get _isWallet => widget.type == 'wallet' || _isRider;
 
   @override
   void initState() {
@@ -84,13 +86,17 @@ class _PaymentReceiptDialogState extends ConsumerState<PaymentReceiptDialog> {
           Icons.check_circle_rounded,
           AppColors.success,
           'Payment successful!',
-          _isWallet ? "It's in your wallet — ready to spend on your next ride." : 'Your booking is confirmed. See you soon!',
+          _isRider
+              ? 'iTULOD received it — your balance is updated on Earnings.'
+              : _isWallet ? "It's in your wallet — ready to spend on your next ride." : 'Your booking is confirmed. See you soon!',
         ),
       'failed' => (
           Icons.cancel_rounded,
           AppColors.danger,
           'Payment did not go through',
-          _isWallet ? 'Your wallet was not topped up. You can try again.' : 'You can retry from My Bookings.',
+          _isRider
+              ? 'Your balance is unchanged. You can try again.'
+              : _isWallet ? 'Your wallet was not topped up. You can try again.' : 'You can retry from My Bookings.',
         ),
       _ when _checking => (Icons.hourglass_top_rounded, AppColors.primary, 'Checking your payment…', 'This only takes a moment.'),
       _ => (
@@ -143,9 +149,11 @@ class _PaymentReceiptDialogState extends ConsumerState<PaymentReceiptDialog> {
     final method = b['payment_method']?.toString();
     final rows = <(String, Widget)>[
       if (b['paymongo_reference'] != null) ('Reference', _value(b['paymongo_reference'].toString())),
-      (_isWallet ? 'Top-up' : 'Booking', _value('#${widget.id.substring(0, 8)}')),
+      _isRider
+          ? ('Paid to', _value('iTULOD (commission)'))
+          : (_isWallet ? 'Top-up' : 'Booking', _value('#${widget.id.substring(0, 8)}')),
       if (route.$1 != null && route.$2 != null) ('Route', _value('${route.$1} → ${route.$2}')),
-      ('Booked', _value(Formatters.date(DateTime.tryParse(b['created_at']?.toString() ?? '')))),
+      (_isWallet ? 'Date' : 'Booked', _value(Formatters.date(DateTime.tryParse(b['created_at']?.toString() ?? '')))),
       ('Method', _value(method == 'gcash' ? 'GCash' : method == 'wallet' ? 'iTULOD Wallet' : (method ?? '—'))),
       ('Status', _statusChip(_status ?? 'pending')),
     ];

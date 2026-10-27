@@ -14,6 +14,7 @@ import '../../../../shared/models/rider_application_model.dart';
 import '../../../../shared/screens/profile_screen.dart';
 import '../../../../shared/widgets/status_badge.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../widgets/rider_balance_card.dart' show riderBalanceProvider, riderSettlingProvider;
 import '../widgets/rider_earnings_tab.dart';
 import '../widgets/rider_history_tab.dart';
 import '../widgets/rider_home_tab.dart';
@@ -268,6 +269,9 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
         'hauling_bookings',
         'payments',
         'notifications',
+        // paid by GCash / confirmed / sent (web sql/051)
+        'rider_settlements',
+        'rider_payment_claims',
       ],
       onChange: () {
         ref.invalidate(riderHomeSnapshotProvider);
@@ -276,6 +280,9 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
         ref.invalidate(riderEarningsProvider);
         ref.invalidate(notificationsProvider);
         ref.invalidate(unreadNotificationsProvider);
+        ref.invalidate(riderBalanceProvider);
+        ref.invalidate(riderSettlingProvider);
+        ref.invalidate(riderDebtProvider);
       },
     );
     // Automatic booking expiration: catches anything the 15-minute grace

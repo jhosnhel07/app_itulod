@@ -117,6 +117,76 @@ class RiderBalance {
   }
 }
 
+/// "I paid the admin" (web sql/051 rider_payment_claims).
+class RiderClaim {
+  final double amount;
+  final String method; // cash | gcash
+  final String? reference;
+  final String status; // pending | confirmed | rejected
+  final String? rejectReason;
+  final DateTime? reviewedAt;
+
+  const RiderClaim({
+    required this.amount,
+    required this.method,
+    this.reference,
+    required this.status,
+    this.rejectReason,
+    this.reviewedAt,
+  });
+
+  factory RiderClaim.fromJson(Map<String, dynamic> j) => RiderClaim(
+        amount: (j['amount'] as num?)?.toDouble() ?? 0,
+        method: j['method'] as String? ?? 'cash',
+        reference: j['reference'] as String?,
+        status: j['status'] as String? ?? 'pending',
+        rejectReason: j['reject_reason'] as String?,
+        reviewedAt: DateTime.tryParse(j['reviewed_at']?.toString() ?? ''),
+      );
+}
+
+/// A recorded payment between the rider and iTULOD (sql/024 rider_settlements).
+class RiderSettlement {
+  final bool payout; // iTULOD → rider; else rider → iTULOD
+  final double amount;
+  final String method;
+  final String? note;
+  final DateTime createdAt;
+
+  const RiderSettlement({required this.payout, required this.amount, required this.method, this.note, required this.createdAt});
+
+  factory RiderSettlement.fromJson(Map<String, dynamic> j) => RiderSettlement(
+        payout: j['direction'] == 'payout',
+        amount: (j['amount'] as num?)?.toDouble() ?? 0,
+        method: j['method'] as String? ?? 'cash',
+        note: j['note'] as String?,
+        createdAt: DateTime.tryParse(j['created_at']?.toString() ?? '') ?? DateTime.now(),
+      );
+
+  String get label {
+    final how = method == 'gcash' ? 'GCash' : method;
+    if (payout) return 'iTULOD sent you · $how';
+    if (note == 'Paid by GCash in the app') return 'You paid by GCash';
+    return 'You paid the admin · $how';
+  }
+}
+
+class RiderSettling {
+  final RiderClaim? claim;
+  final List<RiderSettlement> history;
+  const RiderSettling({this.claim, this.history = const []});
+
+  RiderClaim? get pending => claim?.status == 'pending' ? claim : null;
+
+  /// A rejected claim, shown until a later payment settles things.
+  RiderClaim? get rejected {
+    final c = claim;
+    if (c == null || c.status != 'rejected') return null;
+    final last = history.isEmpty ? null : history.first.createdAt;
+    return last == null || (c.reviewedAt != null && c.reviewedAt!.isAfter(last)) ? c : null;
+  }
+}
+
 class RiderRepository {
   final SupabaseClient _supabase;
 
@@ -528,6 +598,55 @@ class RiderRepository {
     } catch (e, s) {
       AppLog.warn('rider_debt_status failed', e, s);
       return const RiderDebt();
+    }
+  }
+
+  // ── Paying what you owe iTULOD (web sql/051) ─────────────────────────
+
+  /// Starts "Pay with GCash" for exactly what the rider owes (worked out by
+  /// the rider-pay-dues Edge Function). Returns the checkout URL and the
+  /// rider_payments id for the receipt.
+  Future<({String checkoutUrl, String id})> startDuesPayment() async {
+    try {
+      final res = await _supabase.functions.invoke('rider-pay-dues', body: const {});
+      final data = Map<String, dynamic>.from(res.data as Map);
+      return (checkoutUrl: data['checkout_url'] as String, id: data['id'] as String);
+    } on FunctionException catch (e) {
+      final details = e.details;
+      throw Exception(details is Map && details['error'] != null
+          ? details['error']
+          : "Couldn't start the GCash payment.");
+    }
+  }
+
+  /// "I paid the admin": waits for the admin to confirm (one at a time).
+  Future<void> claimPayment({required double amount, required String method, String? reference}) async {
+    try {
+      await _supabase.rpc('rider_claim_payment', params: {
+        'p_amount': amount,
+        'p_method': method,
+        'p_reference': (reference ?? '').trim().isEmpty ? null : reference!.trim(),
+      });
+    } on PostgrestException catch (e) {
+      throw Exception(e.message);
+    }
+  }
+
+  /// The latest "I paid the admin" and the last settlements, newest first.
+  Future<RiderSettling> fetchSettling(String riderId) async {
+    try {
+      final results = await Future.wait([
+        _supabase.from('rider_payment_claims').select().eq('rider_id', riderId).order('created_at', ascending: false).limit(1),
+        _supabase.from('rider_settlements').select().eq('rider_id', riderId).order('created_at', ascending: false).limit(10),
+      ]);
+      final claims = (results[0] as List).cast<Map<String, dynamic>>();
+      return RiderSettling(
+        claim: claims.isEmpty ? null : RiderClaim.fromJson(claims.first),
+        history: (results[1] as List).map((r) => RiderSettlement.fromJson(Map<String, dynamic>.from(r as Map))).toList(),
+      );
+    } catch (e, s) {
+      AppLog.warn('fetchSettling failed', e, s);
+      return const RiderSettling();
     }
   }
 

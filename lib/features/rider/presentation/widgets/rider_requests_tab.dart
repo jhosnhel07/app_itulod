@@ -13,6 +13,7 @@ import '../../../../shared/widgets/status_badge.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/rider_repository.dart';
 import '../../../../shared/screens/booking_details_sheet.dart';
+import 'rider_balance_card.dart' show gcashMinimum, payRiderDues;
 
 final riderRequestsProvider =
     FutureProvider.autoDispose<List<BookingBase>>((ref) async {
@@ -35,12 +36,12 @@ final riderActiveBookingsProvider =
 });
 
 /// Shown above the requests while the rider owes more than the admin's limit.
-class _DebtBanner extends StatelessWidget {
+class _DebtBanner extends ConsumerWidget {
   final RiderDebt debt;
   const _DebtBanner({required this.debt});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
@@ -62,9 +63,24 @@ class _DebtBanner extends StatelessWidget {
                     style: AppTypography.bodyBold.copyWith(color: AppColors.danger)),
                 const SizedBox(height: 2),
                 Text(
-                  "That's more than the ${Formatters.currency(debt.limit)} limit, so you can't accept jobs until you settle it with the admin (GCash or cash). Your balance is on the Earnings page.",
+                  "That's more than the ${Formatters.currency(debt.limit)} limit, so you can't accept jobs until you pay it — "
+                  'by GCash right away, or to the admin (then tap "I paid the admin" on Earnings).',
                   style: AppTypography.caption.copyWith(color: AppColors.danger),
                 ),
+                if (debt.owed >= gcashMinimum) ...[
+                  const SizedBox(height: 8),
+                  FilledButton.icon(
+                    key: const Key('debt-pay-now'),
+                    onPressed: () async {
+                      await payRiderDues(context, ref);
+                      ref
+                        ..invalidate(riderDebtProvider)
+                        ..invalidate(riderRequestsProvider);
+                    },
+                    icon: const Icon(Icons.phone_iphone_rounded, size: 18),
+                    label: Text('Pay ${Formatters.currency(debt.owed)} now'),
+                  ),
+                ],
               ],
             ),
           ),
