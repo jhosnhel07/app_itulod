@@ -181,7 +181,7 @@ class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
         title: 'Order placed!',
         message: _paymentMethod == 'cash'
             ? 'You\'ll pay ${order.displayFare} cash on delivery.'
-            : 'Total ${order.displayFare}. We\'ll ask you to pay once the rider confirms the fare at pickup.',
+            : 'Total ${order.displayFare}. You can pay as soon as a rider accepts.',
       );
       if (!mounted) return;
       Navigator.of(context).popUntil((route) => route.isFirst);
@@ -296,7 +296,7 @@ class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
                     PaymentMethodSelector(
                       value: _paymentMethod,
                       onChanged: (v) => setState(() => _paymentMethod = v),
-                      onlineNote: 'You\'ll be asked to pay once the rider confirms the fare at pickup.',
+                      onlineNote: 'The total shown is the total you pay. You can pay once a rider accepts.',
                     ),
                     const SizedBox(height: 16),
                     _fareBox(cart.totalPrice),

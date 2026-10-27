@@ -114,6 +114,13 @@ class BookingBase {
   bool get isExpired => status == 'expired';
   bool get isNoShow => status == 'no_show';
 
+  /// Counted on the customer's Bookings tab: still going, waiting for their
+  /// payment, or finished in the last 3 days and not rated yet (web: needsYou).
+  bool needsCustomer([DateTime? now]) =>
+      isActive ||
+      needsPayment ||
+      (canRate && (now ?? DateTime.now()).difference(updatedAt ?? createdAt) < const Duration(days: 3));
+
   /// Chat opens once a rider is assigned; RLS only accepts new messages while
   /// the booking is accepted/ongoing.
   bool get hasRider => riderId != null && riderId!.isNotEmpty;
@@ -127,9 +134,10 @@ class BookingBase {
       status == 'expired' ||
       status == 'no_show';
 
-  /// What `create-payment` will charge: a ride's fare is known at booking
-  /// time; food/parcel only once the rider confirms it (finalize-fare).
-  /// Mirrors the web's `paymentDue()` in customer.js.
+  /// What `create-payment` will charge: a ride's fare is payable from booking;
+  /// food / parcel / hauling once a rider accepts — the booking gets its
+  /// final fare (the booked total) then (web sql/050). Mirrors the web's
+  /// `paymentDue()` in customer.js.
   double? get payableAmount =>
       kind == BookingKind.transport ? estimatedFare : finalFare;
 
@@ -143,8 +151,8 @@ class BookingBase {
       status != 'no_show' &&
       (payableAmount ?? 0) > 0;
 
-  /// Food/parcel paid online but the rider hasn't confirmed the fare yet —
-  /// the customer is told the payment step is coming.
+  /// Food/parcel/hauling paid online with no rider yet — the customer is
+  /// told they can pay once a rider accepts.
   bool get awaitingFinalFare =>
       kind != BookingKind.transport &&
       (paymentMethod == 'gcash' || paymentMethod == 'wallet') &&
@@ -677,3 +685,8 @@ class FoodOrderItem {
         isOutOfStock: json['is_out_of_stock'] as bool? ?? false,
       );
 }
+
+/// The price of the items the restaurant didn't have — taken off the
+/// order's total (web sql/050).
+double outOfStockTotal(List<FoodOrderItem> items) =>
+    items.where((i) => i.isOutOfStock).fold(0.0, (s, i) => s + i.subtotal);

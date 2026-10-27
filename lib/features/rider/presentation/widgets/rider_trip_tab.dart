@@ -89,36 +89,25 @@ class _ActiveBookingCard extends ConsumerStatefulWidget {
 }
 
 class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
-  late final TextEditingController _fareController;
   bool _busy = false;
   bool _showMap = true;
 
   BookingBase get booking => widget.booking;
   bool get _isOngoing => booking.status == 'ongoing';
 
-  /// Food/parcel: the rider confirms the real fare at pickup before the job
-  /// can be completed (web: needsFinalFare).
-  bool get _needsFinalFare => booking.kind != BookingKind.transport && booking.finalFare == null;
+  /// The total is what the customer booked — nothing to set (web sql/050).
+  /// A food order's receipt photo comes before "Start Trip".
+  bool get _needsReceipt => booking is FoodDeliveryModel && !_isOngoing;
+  String? get _receiptUrl {
+    final b = booking;
+    return b is FoodDeliveryModel && (b.receiptPhotoUrl ?? '').isNotEmpty ? b.receiptPhotoUrl : null;
+  }
 
   bool get _paymentBlocked =>
       booking.kind == BookingKind.transport &&
       booking.paymentMethod != null &&
       booking.paymentMethod != 'cash' &&
       booking.paymentStatus != 'paid';
-
-  @override
-  void initState() {
-    super.initState();
-    final suggested = booking.estimatedFare;
-    _fareController = TextEditingController(
-        text: suggested == null ? '' : suggested.toStringAsFixed(2));
-  }
-
-  @override
-  void dispose() {
-    _fareController.dispose();
-    super.dispose();
-  }
 
   void _toast(String message, {Color? color}) {
     if (!mounted) return;
@@ -225,33 +214,24 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
     return ImagePicker().pickImage(source: source, maxWidth: 1600, imageQuality: 80);
   }
 
-  /// Food: optional receipt photo, then finalize-fare. Parcel: finalize-fare.
-  Future<void> _setFare() async {
-    final amount = double.tryParse(_fareController.text.trim());
-    if (amount == null || amount <= 0) {
-      _toast('Enter the final fare first.', color: AppColors.danger);
-      return;
-    }
+  /// Food: after buying the order, upload or take a photo of the receipt —
+  /// that unlocks "Start Trip" (web: takeReceiptPhoto).
+  Future<void> _takeReceipt() async {
+    final b = booking;
+    if (b is! FoodDeliveryModel) return;
     final riderId = ref.read(authNotifierProvider).profile!.id;
     final repo = ref.read(riderRepositoryProvider);
-    final b = booking;
-    if (b is FoodDeliveryModel) {
-      final photo = await _pickPhoto('Photo of the receipt (optional)');
-      final bytes = await photo?.readAsBytes();
-      await _run(
-        () => repo.confirmFoodFare(
-          riderId: riderId,
-          booking: b,
-          amount: amount,
-          receiptBytes: bytes,
-          receiptName: photo?.name,
-        ),
-        success: 'Fare confirmed. The customer has been notified.',
+    final photo = await _pickPhoto('Photo of the receipt');
+    if (photo == null || !mounted) return;
+    _toast('Uploading receipt…');
+    await _run(() async {
+      await repo.saveFoodReceipt(
+        riderId: riderId,
+        booking: b,
+        bytes: await photo.readAsBytes(),
+        fileName: photo.name,
       );
-    } else {
-      await _run(() => repo.finalizeFare(b, amount),
-          success: 'Fare confirmed. The customer has been notified.');
-    }
+    }, success: 'Receipt saved — you can start the trip now.');
   }
 
   Future<void> _complete() async {
@@ -295,8 +275,10 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
     }, success: 'Proof of delivery saved — you can now mark it complete.');
   }
 
+  /// Turn-by-turn to the pickup; after Start Trip the card is just proof of
+  /// delivery → Mark Complete.
   Future<void> _openNavigation() async {
-    final destination = _isOngoing ? booking.dropoffLine : booking.pickupLine;
+    final destination = booking.pickupLine;
     final uri = Uri.https('www.google.com', '/maps/dir/', {
       'api': '1',
       'destination': destination,
@@ -315,8 +297,9 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
         ? ref.watch(rideStopsProvider(booking.id))
         : const AsyncValue<List<RideStop>>.data([]);
     final stops = stopsAsync.valueOrNull ?? const <RideStop>[];
-    final canComplete = _isOngoing && !_needsFinalFare;
+    final canComplete = _isOngoing;
     final needsProof = booking.kind != BookingKind.transport;
+    final startLocked = _needsReceipt && _receiptUrl == null;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -327,24 +310,29 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
           children: [
             Row(
               children: [
-                Text('${booking.kind.label} booking', style: AppTypography.h3),
-                const Spacer(),
+                Expanded(
+                  child: Text('${booking.kind.label} booking',
+                      style: AppTypography.h3, overflow: TextOverflow.ellipsis),
+                ),
+                const SizedBox(width: 8),
                 StatusBadge(status: booking.status),
               ],
             ),
             const SizedBox(height: 10),
             Text(booking.routeLine, style: AppTypography.bodyMedium.copyWith(fontSize: 14)),
             const SizedBox(height: 6),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Text('Fare: ${booking.displayFare}', style: AppTypography.captionDark),
-                if (booking.paymentMethod != null && booking.paymentMethod != 'cash') ...[
-                  const SizedBox(width: 8),
+                // the booked total — fixed (web sql/050)
+                Text('Total: ${booking.displayFare}', style: AppTypography.captionDark),
+                if (booking.paymentMethod != null && booking.paymentMethod != 'cash')
                   StatusBadge(
                     status: '${booking.paymentMethod == 'wallet' ? 'Wallet' : 'GCash'} · ${booking.paymentStatus ?? 'pending'}',
                     fontSize: 10,
                   ),
-                ],
               ],
             ),
             if (booking.expiresAt != null) ...[
@@ -383,12 +371,14 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
             ),
             if (_showMap && !stopsAsync.isLoading)
               BookingRouteMap(booking: booking, stops: stops, height: 200),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: _openNavigation,
-              icon: const Icon(Icons.navigation_rounded, size: 18),
-              label: Text(_isOngoing ? 'Navigate to drop-off' : 'Navigate to pickup'),
-            ),
+            if (!_isOngoing) ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _openNavigation,
+                icon: const Icon(Icons.navigation_rounded, size: 18),
+                label: const Text('Navigate to pickup'),
+              ),
+            ],
             // the customer, the full order and what you earn (sql/047)
             TextButton.icon(
               onPressed: () => showRiderBookingDetails(context, booking),
@@ -401,38 +391,18 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
             ],
             if (booking.kind != BookingKind.transport) ...[
               const SizedBox(height: 12),
-              _OrderDetails(booking: booking, canMarkOutOfStock: _isOngoing),
+              // at the restaurant, before the trip starts
+              _OrderDetails(booking: booking, canMarkOutOfStock: !_isOngoing),
             ],
-            if (_needsFinalFare) ...[
-              const SizedBox(height: 14),
-              Text(
-                booking.kind == BookingKind.food
-                    ? 'Confirm the fare at pickup (items + delivery). You can attach a photo of the receipt.'
-                    : booking.kind == BookingKind.hauling
-                        ? 'Confirm the fare once you\'ve seen the load (vehicle + helpers).'
-                        : 'Confirm the fare once you\'ve seen the parcel.',
-                style: AppTypography.caption,
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _fareController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
-                        prefixText: '₱ ',
-                        hintText: 'Final fare',
-                        isDense: true,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  OutlinedButton(
-                    onPressed: _busy ? null : _setFare,
-                    child: const Text('Set fare'),
-                  ),
-                ],
+            if (_needsReceipt) ...[
+              const SizedBox(height: 12),
+              _photoStep(
+                url: _receiptUrl,
+                action: 'Upload / take receipt photo',
+                saved: 'Receipt saved',
+                icon: Icons.receipt_long_rounded,
+                onTap: _takeReceipt,
+                key: const Key('trip-receipt'),
               ),
             ],
             const SizedBox(height: 14),
@@ -443,7 +413,14 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
             ),
             if (canComplete && needsProof) ...[
               const SizedBox(height: 10),
-              _proofSection(),
+              _photoStep(
+                url: _hasProof ? booking.deliveryProofUrl : null,
+                action: 'Take proof of delivery',
+                saved: 'Proof of delivery saved',
+                icon: Icons.photo_camera_rounded,
+                onTap: _takeProof,
+                key: const Key('trip-proof'),
+              ),
             ],
             const SizedBox(height: 10),
             Row(
@@ -479,20 +456,21 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
                     text: _isOngoing ? 'Mark Complete' : 'Start Trip',
                     icon: _isOngoing ? Icons.task_alt_rounded : Icons.play_arrow_rounded,
                     isLoading: _busy,
-                    onPressed: _paymentBlocked || (_isOngoing && (!canComplete || (needsProof && !_hasProof)))
+                    onPressed: _paymentBlocked || (!_isOngoing && startLocked) || (_isOngoing && needsProof && !_hasProof)
                         ? null
                         : (_isOngoing ? _complete : _start),
                   ),
                 ),
               ],
             ),
-            if (_isOngoing && (!canComplete || (needsProof && !_hasProof))) ...[
+            if ((!_isOngoing && startLocked) || (_isOngoing && needsProof && !_hasProof)) ...[
               const SizedBox(height: 6),
               Center(
                 child: Text(
-                    !canComplete
-                        ? 'Set the final fare before completing.'
-                        : 'Take a proof of delivery photo before completing.',
+                    _isOngoing
+                        ? 'Take a proof of delivery photo before completing.'
+                        : 'Buy the order, then take a photo of the receipt to start the trip.',
+                    textAlign: TextAlign.center,
                     style: AppTypography.caption),
               ),
             ],
@@ -502,18 +480,27 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
     );
   }
 
-  /// Step before "Mark Complete" on a drop-off: take the photo, or show the
-  /// saved one with a Retake option.
-  Widget _proofSection() {
-    final url = booking.deliveryProofUrl;
+  /// A photo step — the food receipt before "Start Trip", the proof of
+  /// delivery before "Mark Complete": take the photo, or show the saved one
+  /// with a Retake option.
+  Widget _photoStep({
+    required String? url,
+    required String action,
+    required String saved,
+    required IconData icon,
+    required VoidCallback onTap,
+    Key? key,
+  }) {
     if (url == null || url.isEmpty) {
-      return OutlinedButton.icon(
-        onPressed: _busy ? null : _takeProof,
-        icon: const Icon(Icons.photo_camera_rounded, size: 18),
-        label: const Text('Take proof of delivery'),
+      return FilledButton.icon(
+        key: key,
+        onPressed: _busy ? null : onTap,
+        icon: Icon(icon, size: 18),
+        label: Text(action),
       );
     }
     return Container(
+      key: key,
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: AppColors.success.withValues(alpha: 0.08),
@@ -538,11 +525,11 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text('Proof of delivery saved',
+            child: Text(saved,
                 style: AppTypography.bodyBold.copyWith(color: AppColors.success)),
           ),
           TextButton.icon(
-            onPressed: _busy ? null : _takeProof,
+            onPressed: _busy ? null : onTap,
             icon: const Icon(Icons.cameraswitch_rounded, size: 16),
             label: const Text('Retake'),
           ),
@@ -700,6 +687,7 @@ class _OrderDetails extends ConsumerWidget {
 
     final itemsAsync = ref.watch(foodOrderItemsProvider(b.id));
     final items = itemsAsync.valueOrNull ?? const <FoodOrderItem>[];
+    final outOfStock = outOfStockTotal(items);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -734,14 +722,17 @@ class _OrderDetails extends ConsumerWidget {
                     final ok = await showAppConfirm(
                       context,
                       title: 'Mark as out of stock?',
-                      message: '${item.name} will be crossed off the order.',
+                      message: "${item.name} comes off the customer's total (refunded to their wallet if they "
+                          "already paid online), and they're told. This can't be undone.",
                       confirmText: 'Out of stock',
                       icon: Icons.remove_shopping_cart_outlined,
                     );
                     if (!ok) return;
                     try {
                       await ref.read(riderRepositoryProvider).markItemOutOfStock(item.id);
-                      ref.invalidate(foodOrderItemsProvider(b.id));
+                      ref
+                        ..invalidate(foodOrderItemsProvider(b.id))
+                        ..invalidate(riderActiveBookingsProvider);
                     } catch (e) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -757,7 +748,10 @@ class _OrderDetails extends ConsumerWidget {
         if (b.itemSubtotal != null) ...[
           const Divider(height: 12),
           _line('Item subtotal', Formatters.currency(b.itemSubtotal)),
+          if (outOfStock > 0) _line('Out of stock', '− ${Formatters.currency(outOfStock)}'),
           if (b.deliveryFee != null) _line('Delivery fee', Formatters.currency(b.deliveryFee)),
+          if (canMarkOutOfStock)
+            _line('Bring cash', Formatters.currency((b.itemSubtotal! - outOfStock).clamp(0, double.infinity))),
         ],
       ],
     );

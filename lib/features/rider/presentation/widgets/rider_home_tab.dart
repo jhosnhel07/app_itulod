@@ -190,6 +190,12 @@ class _ActiveJobCard extends ConsumerWidget {
       booking.paymentMethod != 'cash' &&
       booking.paymentStatus != 'paid';
 
+  /// A food order can't start until the rider saved the receipt photo.
+  bool get _needsReceipt {
+    final b = booking;
+    return b is FoodDeliveryModel && b.status == 'accepted' && (b.receiptPhotoUrl ?? '').isEmpty;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isOngoing = booking.status == 'ongoing';
@@ -292,9 +298,9 @@ class _ActiveJobCard extends ConsumerWidget {
                       child: FilledButton.icon(
                         onPressed: (!approved || _paymentBlocked)
                             ? null
-                            // Food/parcel completion needs the confirmed fare
-                            // and a proof photo — both live on the Trip tab.
-                            : (isOngoing && booking.kind != BookingKind.transport)
+                            // A food order's receipt (before starting) and a
+                            // delivery's proof photo are taken on the Trip tab.
+                            : (isOngoing && booking.kind != BookingKind.transport) || _needsReceipt
                                 ? onOpenTrip
                                 : () => _advance(context, ref, isOngoing),
                         icon: Icon(
@@ -303,7 +309,7 @@ class _ActiveJobCard extends ConsumerWidget {
                               : Icons.play_arrow_rounded,
                           size: 18,
                         ),
-                        label: Text(isOngoing ? 'Complete' : 'Start'),
+                        label: Text(isOngoing ? 'Complete' : _needsReceipt ? 'Add receipt' : 'Start'),
                       ),
                     ),
                   ],

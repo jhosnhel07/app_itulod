@@ -36,7 +36,8 @@ void main() {
     expect(find.text('Dark mode'), findsOneWidget);
     expect(find.text('Log out'), findsOneWidget);
     expect(find.text('Notifications'), findsOneWidget);
-    expect(find.text('3'), findsOneWidget); // unread count on the row
+    // the unread count: on the picture and on the row
+    expect(find.text('3'), findsNWidgets(2));
 
     await tester.tap(find.text('Dark mode'));
     await tester.pumpAndSettle();

@@ -366,57 +366,28 @@ class RiderRepository {
         .update({'delivery_proof_url': url}).eq('id', booking.id);
   }
 
-  /// Confirms the real fare of a food/parcel job via the `finalize-fare`
-  /// Edge Function (validated against the estimate, notifies the customer,
-  /// and is what makes a GCash/wallet payment payable).
-  Future<void> finalizeFare(BookingBase booking, double amount) async {
-    try {
-      final response = await _supabase.functions.invoke('finalize-fare', body: {
-        'booking_type': booking.kind.name,
-        'booking_id': booking.id,
-        'amount': amount,
-      });
-      final data = response.data;
-      if (data is Map && data['error'] != null) throw Exception(data['error']);
-    } on FunctionException catch (e) {
-      final details = e.details;
-      throw Exception(details is Map && details['error'] != null
-          ? details['error']
-          : 'Could not confirm the fare.');
-    }
-  }
-
-  /// Food: photo of the counter receipt (`receipts/<riderId>/…`), the actual
-  /// amount paid, then the confirmed fare — the web's adjustFoodBill flow.
-  /// The receipt is best-effort: if the upload fails the fare is still set.
-  Future<void> confirmFoodFare({
+  /// Food: the photo of the receipt (`receipts/<riderId>/…`), taken after
+  /// buying the order. It unlocks "Start Trip" (the database refuses to start
+  /// without it — web sql/050) and the customer sees it in booking details.
+  /// The total itself is fixed: what the customer booked.
+  Future<void> saveFoodReceipt({
     required String riderId,
     required FoodDeliveryModel booking,
-    required double amount,
-    Uint8List? receiptBytes,
-    String? receiptName,
+    required Uint8List bytes,
+    required String fileName,
   }) async {
-    if (receiptBytes != null) {
-      try {
-        final path =
-            '$riderId/receipt-${booking.id}-${DateTime.now().millisecondsSinceEpoch}${_ext(receiptName ?? '.jpg')}';
-        await _supabase.storage.from('receipts').uploadBinary(
-              path,
-              receiptBytes,
-              fileOptions: FileOptions(upsert: true, contentType: _mime(receiptName ?? '.jpg')),
-            );
-        final url = _supabase.storage.from('receipts').getPublicUrl(path);
-        await _supabase.from('food_deliveries').update({
-          'actual_food_cost': amount,
-          'receipt_photo_url': url,
-        }).eq('id', booking.id);
-      } catch (e, s) {
-        AppLog.warn('receipt upload failed — confirming fare without it', e, s);
-      }
-    }
-    await finalizeFare(booking, amount);
+    final path = '$riderId/receipt-${booking.id}-${DateTime.now().millisecondsSinceEpoch}${_ext(fileName)}';
+    await _supabase.storage.from('receipts').uploadBinary(
+          path,
+          bytes,
+          fileOptions: FileOptions(upsert: true, contentType: _mime(fileName)),
+        );
+    final url = _supabase.storage.from('receipts').getPublicUrl(path);
+    await _supabase.from('food_deliveries').update({'receipt_photo_url': url}).eq('id', booking.id);
   }
 
+  /// The item's price comes off the order's total (refunded to the
+  /// customer's wallet if they already paid online) — web sql/050.
   Future<void> markItemOutOfStock(String orderItemId) async {
     final rows = await _supabase
         .from('food_order_items')

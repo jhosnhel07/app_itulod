@@ -94,6 +94,9 @@ class CustomerHomeSummary {
   final List<BookingBase> activeBookings;
   final String? activeRiderName;
   final String? activeRiderPhone;
+  /// Bookings that need the customer, per kind — the count on the Bookings
+  /// tab and its Rides / Food / … chips ([BookingBase.needsCustomer]).
+  final Map<BookingKind, int> needYou;
 
   const CustomerHomeSummary({
     this.completedTrips = 0,
@@ -103,7 +106,10 @@ class CustomerHomeSummary {
     this.activeBookings = const [],
     this.activeRiderName,
     this.activeRiderPhone,
+    this.needYou = const {},
   });
+
+  int get needYouTotal => needYou.values.fold(0, (s, n) => s + n);
 }
 
 class CustomerRepository {
@@ -790,6 +796,10 @@ class CustomerRepository {
       ],
       activeRiderName: riderName,
       activeRiderPhone: riderPhone,
+      needYou: {
+        for (final kind in BookingKind.values)
+          kind: all.where((b) => b.kind == kind && b.needsCustomer(now)).length,
+      },
     );
   }
 

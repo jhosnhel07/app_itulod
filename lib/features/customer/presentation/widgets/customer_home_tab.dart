@@ -366,7 +366,7 @@ class _ActiveBookingCard extends ConsumerWidget {
                 if (b.awaitingFinalFare) ...[
                   const SizedBox(height: 8),
                   Text(
-                    "We'll ask you to pay once the rider confirms the fare at pickup.",
+                    'You can pay as soon as a rider accepts.',
                     style: AppTypography.caption.copyWith(fontSize: 11.5),
                   ),
                 ],

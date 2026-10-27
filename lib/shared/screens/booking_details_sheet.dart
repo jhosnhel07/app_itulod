@@ -315,7 +315,7 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
                       Text(
                           (_asRider && _earn != null
                                   ? (_earn!['is_final'] == true ? 'You earned' : 'You earn')
-                                  : b.finalFare != null ? 'Final fare' : 'Estimated fare')
+                                  : 'Total')
                               .toUpperCase(),
                           style: AppTypography.overline.copyWith(color: AppColors.neutral500, letterSpacing: 0.6)),
                       const SizedBox(height: 2),
@@ -445,12 +445,38 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
             ),
           if (_asRider) ...[
             if (booking.itemSubtotal != null) _detailRow('Item subtotal', Formatters.currency(booking.itemSubtotal)),
+            if (outOfStockTotal(items) > 0) _detailRow('Out of stock', '− ${Formatters.currency(outOfStockTotal(items))}'),
             if (booking.deliveryFee != null) _detailRow('Delivery fee', Formatters.currency(booking.deliveryFee)),
             if (booking.itemSubtotal != null && (booking.status == 'pending' || booking.status == 'accepted'))
               _noteBox(Icons.payments_outlined,
-                  'Bring ${Formatters.currency(booking.itemSubtotal)} cash to buy the food — the customer pays you back with the delivery fee.'),
+                  'Bring ${Formatters.currency((booking.itemSubtotal! - outOfStockTotal(items)).clamp(0, double.infinity))} cash '
+                  'to buy the food — the customer pays you back with the delivery fee.'
+                  '${booking.status == 'accepted' ? ' Then take a photo of the receipt to start the trip.' : ''}'),
           ],
         ]),
+        // the receipt the rider photographed before the trip (web sql/050)
+        if ((booking.receiptPhotoUrl ?? '').isNotEmpty)
+          _section('Receipt', [
+            GestureDetector(
+              key: const Key('details-receipt'),
+              onTap: () => launchUrl(Uri.parse(booking.receiptPhotoUrl!), mode: LaunchMode.externalApplication),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  booking.receiptPhotoUrl!,
+                  height: 220,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    height: 80,
+                    alignment: Alignment.center,
+                    color: AppColors.neutral100,
+                    child: Text('Open the receipt', style: AppTypography.caption),
+                  ),
+                ),
+              ),
+            ),
+          ]),
       ];
     }
     if (booking is HaulingBookingModel) {
@@ -491,6 +517,10 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
     return const [];
   }
 
+  double get _outOfStock => b is FoodDeliveryModel
+      ? outOfStockTotal(ref.watch(foodOrderItemsProvider(b.id)).valueOrNull ?? const <FoodOrderItem>[])
+      : 0;
+
   Widget _fareSection() {
     final booking = b;
     return _section('Fare & payment', [
@@ -498,13 +528,13 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
         _detailRow('Item subtotal', Formatters.currency(booking.itemSubtotal)),
       if (booking is FoodDeliveryModel && booking.deliveryFee != null)
         _detailRow('Delivery fee', Formatters.currency(booking.deliveryFee)),
-      if (booking.estimatedFare != null && booking.finalFare != null)
-        _detailRow('Estimated fare', Formatters.currency(booking.estimatedFare)),
+      if (booking is FoodDeliveryModel && _outOfStock > 0)
+        _detailRow(
+            'Out of stock',
+            '− ${Formatters.currency(_outOfStock)}'
+            '${booking.paymentStatus == 'paid' && (booking.paymentMethod == 'gcash' || booking.paymentMethod == 'wallet') ? ' · refunded to your iTULOD wallet' : ''}'),
       if (booking.finalFare != null || booking.estimatedFare != null)
-        _totalRow(booking.finalFare != null ? 'Final fare' : 'Estimated fare',
-            Formatters.currency(booking.finalFare ?? booking.estimatedFare)),
-      if (booking is FoodDeliveryModel && booking.actualFoodCost != null)
-        _detailRow('Paid at counter', Formatters.currency(booking.actualFoodCost)),
+        _totalRow('Total', Formatters.currency(booking.finalFare ?? booking.estimatedFare)),
       if (booking.promoCode != null && booking.promoCode!.isNotEmpty)
         _detailRow('Promo', '${booking.promoCode}'
             '${(booking.discountAmount ?? 0) > 0 ? ' (−${Formatters.currency(booking.discountAmount)})' : ''}'),
@@ -522,7 +552,7 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
       if (booking.awaitingFinalFare)
         Padding(
           padding: const EdgeInsets.only(top: 4),
-          child: Text("You'll be asked to pay once the rider confirms the fare at pickup.",
+          child: Text('You can pay as soon as a rider accepts.',
               style: AppTypography.caption),
         ),
       if (booking.tipAmount != null && booking.tipAmount! > 0)

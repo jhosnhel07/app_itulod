@@ -22,7 +22,7 @@ class AccountMenuButton extends ConsumerWidget {
   /// Opens the notifications; hides the row when null.
   final VoidCallback? onOpenNotifications;
 
-  /// Unread notifications, shown on the row and as a dot on the picture.
+  /// Unread notifications, shown on the row and as a number on the picture.
   final int unread;
 
   const AccountMenuButton(
@@ -47,9 +47,11 @@ class AccountMenuButton extends ConsumerWidget {
         onTap: () => _open(context),
         child: Padding(
           padding: const EdgeInsets.all(4),
+          // the unread count on the picture (web: .account-dot)
           child: Badge(
+            key: const Key('account-unread'),
             isLabelVisible: unread > 0 && onOpenNotifications != null,
-            smallSize: 10,
+            label: Text(unread > 99 ? '99+' : '$unread'),
             backgroundColor: AppColors.danger,
             child: AvatarWidget(
                 name: name, url: profile?.avatarUrl, radius: 18, ring: true),

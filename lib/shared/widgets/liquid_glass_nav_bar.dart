@@ -215,12 +215,17 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar> with SingleTicker
       child: Center(child: FaIcon(selected ? item.activeIcon : item.icon, size: 20, color: color)),
     );
     if (item.badge > 0) {
-      icon = Badge(label: Text('${item.badge}'), child: icon);
+      icon = Badge(
+        key: Key('nav-badge-${item.label}'),
+        label: Text(item.badge > 99 ? '99+' : '${item.badge}'),
+        backgroundColor: AppColors.danger,
+        child: icon,
+      );
     }
     return Semantics(
       selected: selected,
       button: true,
-      label: item.label,
+      label: item.badge > 0 ? '${item.label}, ${item.badge}' : item.label,
       child: InkWell(
         borderRadius: BorderRadius.circular(22),
         onTap: () => widget.onTap(i),

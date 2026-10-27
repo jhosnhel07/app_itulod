@@ -207,7 +207,13 @@ class _CustomerDashboardScreenState
         },
         items: [
           const LiquidNavItem(icon: AppIcons.home, activeIcon: AppIcons.homeActive, label: 'Home'),
-          const LiquidNavItem(icon: AppIcons.history, activeIcon: AppIcons.history, label: 'Bookings'),
+          // in progress, to pay, or to rate (web: the Booking history count)
+          LiquidNavItem(
+            icon: AppIcons.history,
+            activeIcon: AppIcons.history,
+            label: 'Bookings',
+            badge: ref.watch(customerHomeSummaryProvider).valueOrNull?.needYouTotal ?? 0,
+          ),
           LiquidNavItem(
             icon: AppIcons.messages,
             activeIcon: AppIcons.messagesActive,

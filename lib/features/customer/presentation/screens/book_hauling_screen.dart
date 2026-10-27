@@ -288,7 +288,7 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen>
             ? 'For ${Formatters.date(scheduled)}. We\'ll find a driver closer to the time.'
             : _paymentMethod == 'cash'
                 ? 'Waiting for a driver to accept.'
-                : 'We\'ll ask you to pay once the driver confirms the fare at pickup.',
+                : 'You can pay as soon as a driver accepts.',
       );
       if (!mounted) return;
       Navigator.pop(context);
@@ -502,7 +502,7 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen>
                   PaymentMethodSelector(
                     value: _paymentMethod,
                     onChanged: (v) => setState(() => _paymentMethod = v),
-                    onlineNote: 'You\'ll be asked to pay once the driver confirms the fare at pickup.',
+                    onlineNote: 'The total shown is the total you pay. You can pay once a driver accepts.',
                   ),
                   if (_availability != null) ...[
                     const SizedBox(height: 12),
@@ -608,7 +608,7 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen>
                       ? 'Set both locations on the map to see the fare.'
                       : _routing
                           ? 'Measuring the road route…'
-                          : 'The driver confirms the final fare after seeing the load.',
+                          : 'This is the total you pay — vehicle plus helpers.',
                   style: AppTypography.caption.copyWith(fontSize: 11),
                 ),
               ),

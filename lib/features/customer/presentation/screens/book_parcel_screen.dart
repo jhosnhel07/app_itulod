@@ -257,7 +257,7 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen>
         title: 'Parcel delivery requested!',
         message: _paymentMethod == 'cash'
             ? 'Pay the rider in cash.'
-            : 'We\'ll ask you to pay once the rider confirms the fare at pickup.',
+            : 'You can pay as soon as a rider accepts.',
       );
       if (!mounted) return;
       Navigator.pop(context);
@@ -480,7 +480,7 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen>
                   PaymentMethodSelector(
                     value: _paymentMethod,
                     onChanged: (v) => setState(() => _paymentMethod = v),
-                    onlineNote: 'You\'ll be asked to pay once the rider confirms the fare at pickup.',
+                    onlineNote: 'The total shown is the total you pay. You can pay once a rider accepts.',
                   ),
               ]),
             ],

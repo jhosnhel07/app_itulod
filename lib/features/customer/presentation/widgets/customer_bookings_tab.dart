@@ -14,6 +14,7 @@ import '../../../../shared/widgets/app_button.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/customer_repository.dart';
 import 'cancellation_dialog.dart';
+import 'customer_home_tab.dart' show customerHomeSummaryProvider;
 import 'gcash_pay_action.dart';
 import 'support_request_dialog.dart';
 
@@ -212,7 +213,13 @@ class _CustomerBookingsTabState extends ConsumerState<CustomerBookingsTab>
   Widget build(BuildContext context) {
     return Column(
       children: [
-        ServiceTabBar(controller: _tabController),
+        ServiceTabBar(
+          controller: _tabController,
+          counts: [
+            for (final kind in BookingKind.values)
+              ref.watch(customerHomeSummaryProvider).valueOrNull?.needYou[kind] ?? 0,
+          ],
+        ),
         Expanded(
           child: TabBarView(
             controller: _tabController,

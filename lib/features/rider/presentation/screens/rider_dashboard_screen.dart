@@ -427,12 +427,21 @@ class _RiderDashboardScreenState extends ConsumerState<RiderDashboardScreen>
           _index = i;
           _navCompact = false;
         }),
-        items: const [
-          LiquidNavItem(icon: AppIcons.home, activeIcon: AppIcons.homeActive, label: 'Home'),
-          LiquidNavItem(icon: AppIcons.requests, activeIcon: AppIcons.requests, label: 'Requests'),
-          LiquidNavItem(icon: AppIcons.trip, activeIcon: AppIcons.trip, label: 'Trip'),
-          LiquidNavItem(icon: AppIcons.earnings, activeIcon: AppIcons.earnings, label: 'Earnings'),
-          LiquidNavItem(icon: AppIcons.history, activeIcon: AppIcons.history, label: 'History'),
+        // counts: open booking requests and jobs under way (web: setNavCount)
+        items: [
+          const LiquidNavItem(icon: AppIcons.home, activeIcon: AppIcons.homeActive, label: 'Home'),
+          LiquidNavItem(
+              icon: AppIcons.requests,
+              activeIcon: AppIcons.requests,
+              label: 'Requests',
+              badge: ref.watch(riderRequestsProvider).valueOrNull?.length ?? 0),
+          LiquidNavItem(
+              icon: AppIcons.trip,
+              activeIcon: AppIcons.trip,
+              label: 'Trip',
+              badge: ref.watch(riderActiveBookingsProvider).valueOrNull?.length ?? 0),
+          const LiquidNavItem(icon: AppIcons.earnings, activeIcon: AppIcons.earnings, label: 'Earnings'),
+          const LiquidNavItem(icon: AppIcons.history, activeIcon: AppIcons.history, label: 'History'),
         ],
       ),
     );

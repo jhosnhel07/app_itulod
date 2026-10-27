@@ -8,7 +8,28 @@ import '../../core/constants/app_typography.dart';
 /// reads at a glance (web twin: .segmented / .seg-btn in dashboard.css).
 class ServiceTabBar extends StatelessWidget {
   final TabController controller;
-  const ServiceTabBar({super.key, required this.controller});
+
+  /// A count on each service (Rides, Food, Parcels, Hauling), e.g. bookings
+  /// that need the customer; 0 shows nothing.
+  final List<int> counts;
+  const ServiceTabBar({super.key, required this.controller, this.counts = const []});
+
+  static const _labels = ['Rides', 'Food', 'Parcels', 'Hauling'];
+
+  Widget _tab(int i) {
+    final n = i < counts.length ? counts[i] : 0;
+    if (n <= 0) return Tab(text: _labels[i], height: 40);
+    return Tab(
+      height: 40,
+      child: Badge(
+        key: Key('service-count-${_labels[i]}'),
+        label: Text(n > 99 ? '99+' : '$n'),
+        backgroundColor: AppColors.danger,
+        offset: const Offset(12, -6),
+        child: Text(_labels[i]),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,12 +60,7 @@ class ServiceTabBar extends StatelessWidget {
           labelStyle: AppTypography.bodyBold.copyWith(fontSize: 14),
           unselectedLabelStyle: AppTypography.bodyMedium.copyWith(fontSize: 14),
           labelPadding: EdgeInsets.zero,
-          tabs: const [
-            Tab(text: 'Rides', height: 40),
-            Tab(text: 'Food', height: 40),
-            Tab(text: 'Parcels', height: 40),
-            Tab(text: 'Hauling', height: 40),
-          ],
+          tabs: [for (var i = 0; i < _labels.length; i++) _tab(i)],
         ),
       ),
     );
