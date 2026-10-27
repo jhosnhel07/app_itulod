@@ -90,91 +90,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
-  void _showForgotPasswordSheet() {
-    final resetController = TextEditingController(text: _identifierController.text.trim());
-    bool isResetting = false;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheetState) => Padding(
-          padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 24,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Reset Password',
-                    style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 18),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.close, color: AppColors.neutral500),
-                    onPressed: () => Navigator.pop(sheetContext),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Enter your registered email address to receive password reset instructions.',
-                style: GoogleFonts.inter(color: AppColors.slate, fontSize: 14),
-              ),
-              const SizedBox(height: 20),
-              AuthTextField(
-                label: 'Email address',
-                hint: 'name@example.com',
-                icon: FontAwesomeIcons.envelope,
-                controller: resetController,
-                keyboardType: TextInputType.emailAddress,
-              ),
-              AuthGradientButton(
-                text: 'Send Reset Link',
-                isLoading: isResetting,
-                leadingIcon: FontAwesomeIcons.paperPlane,
-                onPressed: () async {
-                  final email = resetController.text.trim();
-                  if (email.isEmpty) return;
-
-                  final messenger = ScaffoldMessenger.of(context);
-                  setSheetState(() => isResetting = true);
-                  final sent = await ref.read(authNotifierProvider.notifier).resetPassword(email);
-                  setSheetState(() => isResetting = false);
-
-                  if (sheetContext.mounted) {
-                    Navigator.pop(sheetContext);
-                  }
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        sent
-                            ? 'Password reset email sent! Check your inbox.'
-                            : 'Could not send reset email. Please try again.',
-                      ),
-                      backgroundColor: sent ? AppColors.success : AppColors.danger,
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
@@ -249,7 +164,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const Spacer(),
                   GestureDetector(
-                    onTap: _showForgotPasswordSheet,
+                    // email or number → code → new password (forgot_password_screen.dart)
+                    onTap: () => context.go(Uri(path: '/forgot-password', queryParameters: {
+                      if (_identifierController.text.trim().isNotEmpty) 'id': _identifierController.text.trim(),
+                    }).toString()),
                     child: Text(
                       AppStrings.forgotPassword,
                       style: GoogleFonts.inter(

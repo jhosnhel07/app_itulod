@@ -224,6 +224,37 @@ class AuthRepository {
         .toList();
   }
 
+  // ── Forgot password with a code (web sql/049, password-reset-code) ──
+  // An email or mobile number; a number's code goes to that account's email.
+
+  Future<Map<String, dynamic>> _resetCodeCall(Map<String, dynamic> body) async {
+    try {
+      final res = await _supabase.functions.invoke('password-reset-code', body: body);
+      return Map<String, dynamic>.from(res.data as Map);
+    } on FunctionException catch (e) {
+      final details = e.details;
+      final message = details is Map ? details['error'] as String? : null;
+      throw AuthException(message ?? 'Something went wrong. Please try again.');
+    }
+  }
+
+  /// Sends the 6-digit code; returns where it went, masked ("ju***@gmail.com").
+  Future<String> sendResetCode(String identifier) async {
+    final data = await _resetCodeCall({'action': 'send', 'identifier': identifier});
+    return data['sent_to'] as String? ?? 'your email';
+  }
+
+  /// Checks the code and signs in with the session it returns — then
+  /// [updatePassword] sets the new one.
+  Future<void> verifyResetCode(String identifier, String code) async {
+    final data = await _resetCodeCall({'action': 'verify', 'identifier': identifier, 'code': code});
+    await _supabase.auth.setSession(data['refresh_token'] as String);
+  }
+
+  Future<void> updatePassword(String password) async {
+    await _supabase.auth.updateUser(UserAttributes(password: password));
+  }
+
   Future<void> resetPasswordForEmail(String emailOrUsername) async {
     final email = _resolveEmail(emailOrUsername);
     if (emailOrUsername.trim().toLowerCase() == 'admin') {

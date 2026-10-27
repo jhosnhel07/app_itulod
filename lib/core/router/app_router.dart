@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/admin/presentation/screens/admin_dashboard_screen.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
+import '../../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../../features/auth/presentation/screens/register_screen.dart';
 import '../../features/auth/presentation/screens/rider_under_review_screen.dart';
 import '../../features/customer/presentation/screens/customer_dashboard_screen.dart';
@@ -37,6 +38,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // of the form before the success panel shows. The wizard sends the user
       // to /login itself when it is done.
       if (isRegistering) {
+        return null;
+      }
+      // Forgot password signs in with the code before the new password is
+      // set; the screen sends the user on itself (to /login → dashboard).
+      if (state.matchedLocation == '/forgot-password') {
         return null;
       }
 
@@ -82,6 +88,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: '/forgot-password',
+        builder: (context, state) =>
+            ForgotPasswordScreen(initialIdentifier: state.uri.queryParameters['id'] ?? ''),
       ),
       GoRoute(
         path: '/register',
