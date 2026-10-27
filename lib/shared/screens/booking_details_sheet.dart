@@ -15,11 +15,45 @@ import '../../features/rider/presentation/screens/vehicle_documents_screen.dart'
 import '../../features/customer/presentation/screens/booking_confirmation_screen.dart'
     show paymentMethodLabel;
 import '../models/booking_models.dart';
+import '../models/profile_model.dart' show UserRole;
 import '../models/vehicle_model.dart';
 import '../providers/booking_extras_providers.dart';
 import '../widgets/booking_route_map.dart';
 import '../widgets/loading_skeleton.dart';
 import '../widgets/status_badge.dart';
+
+typedef RiderBookingView = ({Map<String, dynamic>? customer, Map<String, dynamic>? earn});
+
+/// For the rider of a booking (or one looking at a waiting request): the
+/// customer — name, photo, bookings; phone while the trip is on — and the
+/// earnings (web sql/047 booking_customer / rider_booking_earnings). Keyed by
+/// (type, id, withCustomer).
+final riderBookingViewProvider =
+    FutureProvider.autoDispose.family<RiderBookingView, (String, String, bool)>((ref, key) async {
+  final (type, id, withCustomer) = key;
+  Future<Map<String, dynamic>?> first(String fn) async {
+    try {
+      final rows = await SupabaseConfig.client.rpc(fn, params: {'p_type': type, 'p_id': id}) as List;
+      return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first as Map);
+    } catch (e, s) {
+      AppLog.warn('riderBookingView: $fn failed', e, s);
+      return null;
+    }
+  }
+  return (customer: withCustomer ? await first('booking_customer') : null, earn: await first('rider_booking_earnings'));
+});
+
+/// The rider's booking details (Requests, Trip, History): the customer, the
+/// full order and what you earn — BookingDetailsSheet shows the rider view
+/// when a rider opens it.
+Future<void> showRiderBookingDetails(BuildContext context, BookingBase booking) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => BookingDetailsSheet(booking: booking),
+  );
+}
 
 /// Bottom sheet mirroring the web app's booking-details modal
 /// (js/bookingDetails.js): route + stops + map with live rider tracking,
@@ -49,6 +83,17 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
   bool _showMap = false;
   /// A finished trip only offers View chat when there was a chat.
   bool _hadChat = false;
+
+  bool get _asRider => ref.read(authNotifierProvider).profile?.role == UserRole.rider;
+  bool get _myJob => _asRider && b.riderId == ref.read(authNotifierProvider).profile?.id;
+  bool get _openRequest => _asRider && !b.hasRider && b.status == 'pending';
+
+  /// The rider's own view (web sql/047): the customer (once accepted) and the earnings.
+  RiderBookingView get _riderView => _myJob || _openRequest
+      ? ref.watch(riderBookingViewProvider((b.kind.name, b.id, _myJob))).valueOrNull ?? const (customer: null, earn: null)
+      : const (customer: null, earn: null);
+  Map<String, dynamic>? get _customer => _riderView.customer;
+  Map<String, dynamic>? get _earn => _riderView.earn;
 
   BookingBase get b => widget.booking;
 
@@ -170,19 +215,21 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
                       _noticeBanner(_statusNotice()!),
                       const SizedBox(height: 16),
                     ],
-                    _riderSection(),
+                    // The rider sees the customer and their earnings instead of
+                    // their own card, vehicle and documents.
+                    _asRider ? _customerSection() : _riderSection(),
                     _routeSection(stops, stopsAsync.isLoading),
                     ..._kindSpecific(),
-                    _fareSection(),
-                    _vehicleSection(),
-                    _documentsSection(),
+                    _asRider ? _earningsSection() : _fareSection(),
+                    if (!_asRider) _vehicleSection(),
+                    if (!_asRider) _documentsSection(),
                     _proofSection(),
                     if (b.cancelledReason != null && b.cancelledReason!.isNotEmpty)
                       _section('Cancellation', [
                         Text(b.cancelledReason!, style: AppTypography.body.copyWith(color: AppColors.danger)),
                       ]),
                     if (b.rating != null)
-                      _section('Rating', [
+                      _section(_asRider ? 'Customer rated you' : 'Rating', [
                         Row(
                           children: List.generate(
                             b.rating!,
@@ -265,10 +312,18 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text((b.finalFare != null ? 'Final fare' : 'Estimated fare').toUpperCase(),
+                      Text(
+                          (_asRider && _earn != null
+                                  ? (_earn!['is_final'] == true ? 'You earned' : 'You earn')
+                                  : b.finalFare != null ? 'Final fare' : 'Estimated fare')
+                              .toUpperCase(),
                           style: AppTypography.overline.copyWith(color: AppColors.neutral500, letterSpacing: 0.6)),
                       const SizedBox(height: 2),
-                      Text(fare != null ? Formatters.currency(fare) : '—',
+                      Text(
+                          _asRider && _earn != null
+                              ? Formatters.currency((_earn!['payout'] as num).toDouble())
+                              : fare != null ? Formatters.currency(fare) : '—',
+                          key: const Key('details-hero-amount'),
                           style: AppTypography.display.copyWith(fontSize: 28)),
                     ],
                   ),
@@ -388,6 +443,13 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
                 ],
               ),
             ),
+          if (_asRider) ...[
+            if (booking.itemSubtotal != null) _detailRow('Item subtotal', Formatters.currency(booking.itemSubtotal)),
+            if (booking.deliveryFee != null) _detailRow('Delivery fee', Formatters.currency(booking.deliveryFee)),
+            if (booking.itemSubtotal != null && (booking.status == 'pending' || booking.status == 'accepted'))
+              _noteBox(Icons.payments_outlined,
+                  'Bring ${Formatters.currency(booking.itemSubtotal)} cash to buy the food — the customer pays you back with the delivery fee.'),
+          ],
         ]),
       ];
     }
@@ -476,6 +538,166 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
           'Refund',
           '${Formatters.currency(((booking.finalFare ?? booking.estimatedFare ?? 0) - (booking.cancellationFee ?? 0)).clamp(0, double.infinity))} to your iTULOD wallet',
         ),
+    ]);
+  }
+
+  // ── Rider view (web sql/047): the customer, earnings, what to collect ──
+
+  Widget _noteBox(IconData icon, String text) => Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.primary50,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 18, color: AppColors.primary),
+            const SizedBox(width: 8),
+            Expanded(child: Text(text, style: AppTypography.body.copyWith(fontSize: 13, color: AppColors.primaryDark))),
+          ],
+        ),
+      );
+
+  Widget _customerSection() {
+    if (_loadingRider) return const SkeletonList(count: 1, padding: EdgeInsets.only(bottom: 18));
+    final c = _customer;
+    if (c == null) {
+      if (!_openRequest) return const SizedBox.shrink();
+      return _section('Customer', [
+        Text("The customer's name and number show once you accept this booking.", style: AppTypography.caption),
+      ]);
+    }
+    final name = (c['full_name'] as String?)?.trim().isNotEmpty == true ? c['full_name'] as String : 'Customer';
+    final phone = c['phone'] as String?;
+    final avatar = c['avatar_url'] as String?;
+    final completed = (c['completed_bookings'] as num?)?.toInt() ?? 0;
+    final since = DateTime.tryParse(c['member_since']?.toString() ?? '');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final tripActive = b.canSendChat;
+    final initials = name.trim().split(RegExp(r'\s+')).take(2).map((p) => p[0].toUpperCase()).join();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('YOUR CUSTOMER', style: AppTypography.caption.copyWith(letterSpacing: 1)),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.cardBorder),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 26,
+                      backgroundColor: AppColors.primary,
+                      backgroundImage: avatar != null && avatar.isNotEmpty ? NetworkImage(avatar) : null,
+                      child: avatar == null || avatar.isEmpty
+                          ? Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))
+                          : null,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(name, style: AppTypography.bodyBold.copyWith(fontSize: 16)),
+                          const SizedBox(height: 2),
+                          Text(
+                            [
+                              completed == 0 ? 'New customer' : '$completed completed booking${completed == 1 ? '' : 's'}',
+                              if (since != null) 'Since ${months[since.month - 1]} ${since.year}',
+                            ].join(' · '),
+                            style: AppTypography.caption,
+                          ),
+                          if (phone != null && phone.isNotEmpty)
+                            Text(phone, style: AppTypography.caption.copyWith(color: AppColors.primary)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (tripActive || _hadChat) ...[
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      if (tripActive && phone != null && phone.isNotEmpty) ...[
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: () => launchUrl(Uri(scheme: 'tel', path: phone)),
+                            icon: const Icon(Icons.call_rounded, size: 18),
+                            label: const Text('Call'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                      ],
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => Navigator.push(context, ChatScreen.route(b)),
+                          icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
+                          label: Text(tripActive ? 'Message' : 'View chat'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _earningsSection() {
+    final booking = b;
+    final e = _earn;
+    final ended = booking.status == 'cancelled' || booking.isNoShow || booking.isExpired;
+    final fare = booking.finalFare ?? booking.estimatedFare;
+    final cod = booking is ParcelDeliveryModel && booking.codAmount > 0 ? booking.codAmount : 0.0;
+    final isFinal = e?['is_final'] == true;
+    final tip = (e?['tip'] as num?)?.toDouble() ?? 0;
+    final shownFare = e == null ? null : (e['fare'] as num).toDouble() - (isFinal ? tip : 0);
+    String? collect;
+    if (!ended && booking.status != 'completed') {
+      final codText = cod > 0 ? ' · plus the ${Formatters.currency(cod)} cash on delivery for the sender' : '';
+      if (booking.paymentMethod == null || booking.paymentMethod == 'cash') {
+        collect = 'Collect ${Formatters.currency(fare)} in cash from the customer$codText.';
+      } else if (booking.paymentStatus == 'paid') {
+        collect = 'Paid online — nothing to collect${cod > 0 ? ', except the ${Formatters.currency(cod)} cash on delivery for the sender' : ''}.';
+      } else {
+        collect = 'The customer pays online (${paymentMethodLabel(booking.paymentMethod)})$codText.';
+      }
+    }
+    return _section('Your earnings', [
+      if (e != null) ...[
+        _detailRow(ended ? 'Fee from the customer' : 'Fare', Formatters.currency(shownFare)),
+        if (((e['commission'] as num?) ?? 0) > 0)
+          _detailRow('iTULOD commission', '− ${Formatters.currency((e['commission'] as num).toDouble())}'),
+        if (tip > 0) _detailRow('Tip from the customer', Formatters.currency(tip)),
+        _totalRow(isFinal ? 'You earned' : 'You earn (estimate)',
+            Formatters.currency((e['payout'] as num).toDouble())),
+      ] else
+        _detailRow('Fare', fare != null ? Formatters.currency(fare) : '—'),
+      _detailRow('Method', paymentMethodLabel(booking.paymentMethod)),
+      if (booking.paymentStatus != null)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              SizedBox(width: 110, child: Text('Payment', style: AppTypography.captionDark)),
+              StatusBadge(status: booking.paymentStatus!, fontSize: 11),
+            ],
+          ),
+        ),
+      if (collect != null) _noteBox(Icons.price_check_rounded, collect),
     ]);
   }
 
@@ -705,8 +927,16 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
   String? _statusNotice() {
     if (b.isExpired) return AppStrings.bookingExpiredMessage;
     if (b.isNoShow) return 'This booking was marked as a no-show by the rider.';
-    if (b.status == 'pending') return AppStrings.pendingGracePeriodNote;
-    if (b.status == 'accepted') return AppStrings.gracePeriodNote;
+    if (b.status == 'pending') {
+      return _asRider
+          ? 'Accept within the 15-minute window, or this request expires automatically.'
+          : AppStrings.pendingGracePeriodNote;
+    }
+    if (b.status == 'accepted') {
+      return _asRider
+          ? 'Start the trip within 15 minutes of the booking time, or it expires automatically.'
+          : AppStrings.gracePeriodNote;
+    }
     return null;
   }
 

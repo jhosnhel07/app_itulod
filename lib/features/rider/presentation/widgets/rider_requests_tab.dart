@@ -12,6 +12,7 @@ import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/status_badge.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/rider_repository.dart';
+import '../../../../shared/screens/booking_details_sheet.dart';
 
 final riderRequestsProvider =
     FutureProvider.autoDispose<List<BookingBase>>((ref) async {
@@ -139,7 +140,11 @@ class RiderRequestsTab extends ConsumerWidget {
               final shortOfCash = b is FoodDeliveryModel && (b.itemSubtotal ?? 0) > float;
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
-                child: Padding(
+                clipBehavior: Clip.antiAlias,
+                // tap for the full request: items, expected earnings (sql/047)
+                child: InkWell(
+                  onTap: () => showRiderBookingDetails(context, b),
+                  child: Padding(
                   padding: const EdgeInsets.all(14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -268,6 +273,7 @@ class RiderRequestsTab extends ConsumerWidget {
                     ],
                   ),
                 ),
+                ), // InkWell
               );
             },
           );

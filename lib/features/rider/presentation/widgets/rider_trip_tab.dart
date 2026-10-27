@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../../../../shared/widgets/loading_skeleton.dart';
+import '../../../../shared/screens/booking_details_sheet.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -387,6 +388,12 @@ class _ActiveBookingCardState extends ConsumerState<_ActiveBookingCard> {
               onPressed: _openNavigation,
               icon: const Icon(Icons.navigation_rounded, size: 18),
               label: Text(_isOngoing ? 'Navigate to drop-off' : 'Navigate to pickup'),
+            ),
+            // the customer, the full order and what you earn (sql/047)
+            TextButton.icon(
+              onPressed: () => showRiderBookingDetails(context, booking),
+              icon: const Icon(Icons.receipt_long_rounded, size: 18),
+              label: const Text('Booking details'),
             ),
             if (stops.isNotEmpty) ...[
               const SizedBox(height: 12),
