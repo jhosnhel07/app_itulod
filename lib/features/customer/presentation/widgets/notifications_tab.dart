@@ -142,6 +142,7 @@ final _bookingRe = RegExp(
 
 IconData _iconFor(Map<String, dynamic> n) {
   if ((n['link']?.toString() ?? '').startsWith('messages/')) return Icons.chat_bubble_rounded;
+  if ((n['link']?.toString() ?? '').startsWith('announcement/')) return Icons.campaign_rounded; // from the admin
   final t = '${n['title']} ${n['message']}'.toLowerCase();
   if (RegExp(r'refund|wallet|payment|fee|tip|bonus').hasMatch(t)) return Icons.account_balance_wallet_rounded;
   if (RegExp(r'cancel|expired|no-show|not approved').hasMatch(t)) return Icons.error_outline_rounded;

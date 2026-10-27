@@ -85,7 +85,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/register',
-        builder: (context, state) => const RegisterScreen(),
+        // keyed by the full address, so "Create another account" (?new=…)
+        // starts a fresh form
+        builder: (context, state) => RegisterScreen(key: ValueKey(state.uri.toString())),
       ),
       GoRoute(
         path: '/customer/home',

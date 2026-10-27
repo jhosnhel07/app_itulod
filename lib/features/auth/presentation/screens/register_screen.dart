@@ -1056,6 +1056,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             leadingIcon: FontAwesomeIcons.rightToBracket,
             onPressed: () => context.go('/login'),
           ),
+          const SizedBox(height: 10),
+          // The new account is already signed out — start another sign-up.
+          TextButton.icon(
+            onPressed: () => context.go('/register?new=${DateTime.now().millisecondsSinceEpoch}'),
+            icon: const FaIcon(FontAwesomeIcons.userPlus, size: 14),
+            label: const Text('Create another account'),
+          ),
         ],
       ),
     );
@@ -1143,6 +1150,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             text: AppStrings.goToLogin,
             leadingIcon: FontAwesomeIcons.rightToBracket,
             onPressed: () => context.go('/login'),
+          ),
+          const SizedBox(height: 10),
+          // The new account is already signed out — start another sign-up.
+          TextButton.icon(
+            onPressed: () => context.go('/register?new=${DateTime.now().millisecondsSinceEpoch}'),
+            icon: const FaIcon(FontAwesomeIcons.userPlus, size: 14),
+            label: const Text('Create another account'),
           ),
           const SizedBox(height: 20),
           Text(
