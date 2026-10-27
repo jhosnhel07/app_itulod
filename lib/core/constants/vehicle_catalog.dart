@@ -121,6 +121,8 @@ const Map<String, List<String>> vehicleModelsByType = {
     'Toyota Innova',
   ],
   'Van': [
+    'Mitsubishi L300',
+    'Mitsubishi L300 FB',
     'Toyota Hiace',
     'Toyota Coaster',
     'Nissan Urvan',
@@ -141,6 +143,8 @@ const Map<String, List<String>> vehicleModelsByType = {
     'Maxus V80',
   ],
   'Pickup': [
+    'Suzuki Multicab',
+    'Suzuki Carry (Multicab)',
     'Toyota Hilux',
     'Toyota Tacoma',
     'Mitsubishi Strada',
@@ -160,6 +164,30 @@ const Map<String, List<String>> vehicleModelsByType = {
     'Ram 1500',
     'GMC Sierra',
     'Jeep Gladiator',
+  ],
+  'Jeepney': [
+    'Sarao (traditional)',
+    'Francisco Motors (traditional)',
+    'Hino Modern Jeepney',
+    'Isuzu Modern Jeepney (QKR)',
+    'Toyota Modern Jeepney',
+    'Hyundai County',
+    'Foton Modern Jeepney',
+    'Mitsubishi Fuso Modern Jeepney',
+    'Other',
+  ],
+  'Bus': [
+    'Hino RK / RM',
+    'Hyundai Universe',
+    'Hyundai County',
+    'Isuzu',
+    'King Long',
+    'Yutong',
+    'Golden Dragon',
+    'Higer',
+    'Daewoo BS',
+    'Volvo B11R',
+    'Other',
   ],
   'Truck': [
     'Isuzu Elf',
@@ -184,8 +212,10 @@ const Map<String, List<String>> vehicleModelsByType = {
   ],
 };
 
-/// Rider sign-up choices. Bicycle riders deliver food only (vehicles.services,
-/// web sql/040) and need no plate, driver's license or OR / CR.
+/// Rider sign-up choices: every rider vehicle type the job matching knows
+/// (web sql/033 rider_type_for_vehicle; the same as register.html). Bicycle
+/// riders deliver food only (vehicles.services, web sql/040) and need no
+/// plate, driver's license or OR / CR.
 const List<String> vehicleTypes = [
   'Bicycle',
   'Motorcycle',
@@ -193,6 +223,28 @@ const List<String> vehicleTypes = [
   'Car',
   'SUV',
   'Van',
+  'Jeepney',
+  'Bus',
   'Pickup',
   'Truck',
 ];
+
+/// What the card says (the saved vehicle_type stays the key above).
+const Map<String, String> vehicleTypeLabel = {
+  'Van': 'Van / L300',
+  'Pickup': 'Pickup / Multicab',
+};
+
+/// Which jobs each vehicle gets (from vehicles.services).
+const Map<String, String> vehicleTypeJobs = {
+  'Bicycle': 'Food only',
+  'Motorcycle': 'Rides · food · parcels',
+  'Tricycle': 'Rides · food · parcels',
+  'Car': 'Rides · food · parcels',
+  'SUV': 'Rides · parcels',
+  'Van': 'Rides · parcels · hauling',
+  'Jeepney': 'Rides (9–14)',
+  'Bus': 'Rides (15–40)',
+  'Pickup': 'Hauling',
+  'Truck': 'Parcels · hauling',
+};

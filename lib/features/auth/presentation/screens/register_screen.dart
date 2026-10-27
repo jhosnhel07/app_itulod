@@ -736,8 +736,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             physics: const NeverScrollableScrollPhysics(),
             mainAxisSpacing: 10,
             crossAxisSpacing: 10,
-            // Tall enough for the icon plus a wrapped label at 360dp.
-            childAspectRatio: 0.85,
+            // Tall enough for the icon, a wrapped name and the jobs line at 360dp.
+            childAspectRatio: 0.72,
             children: vehicleTypes.map((type) {
               final selected = _selectedVehicleType == type;
               return GestureDetector(
@@ -773,7 +773,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       _vehicleIcon(type, selected),
                       const SizedBox(height: 6),
                       Text(
-                        type,
+                        vehicleTypeLabel[type] ?? type,
                         textAlign: TextAlign.center,
                         style: GoogleFonts.inter(
                           fontSize: 11.5,
@@ -781,6 +781,20 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           color: selected ? AppColors.brandBlue : AppColors.slate,
                         ),
                       ),
+                      // which jobs this vehicle gets
+                      if (vehicleTypeJobs[type] != null) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          vehicleTypeJobs[type]!,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          style: GoogleFonts.inter(
+                            fontSize: 9.5,
+                            height: 1.25,
+                            color: selected ? AppColors.brandBlue.withValues(alpha: 0.8) : AppColors.iconMuted,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -869,6 +883,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         return FaIcon(FontAwesomeIcons.carSide, size: 22, color: color);
       case 'Van':
         return FaIcon(FontAwesomeIcons.vanShuttle, size: 22, color: color);
+      case 'Jeepney':
+        return FaIcon(FontAwesomeIcons.busSimple, size: 22, color: color);
+      case 'Bus':
+        return FaIcon(FontAwesomeIcons.bus, size: 22, color: color);
       case 'Pickup':
         return FaIcon(FontAwesomeIcons.truckPickup, size: 22, color: color);
       default:
