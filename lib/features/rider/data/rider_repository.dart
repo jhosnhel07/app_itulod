@@ -34,8 +34,12 @@ class EarningRecord {
   final String method;
   final String bookingType;
   final double amount;
+  /// iTULOD's full commission (a promo is paid by iTULOD, so this is
+  /// payments.platform_commission + promo_discount — web sql/053).
   final double commission;
   final double payout;
+  /// The customer's promo discount, paid by iTULOD (0 = none).
+  final double promo;
   final DateTime createdAt;
 
   const EarningRecord({
@@ -44,6 +48,7 @@ class EarningRecord {
     required this.amount,
     required this.commission,
     required this.payout,
+    this.promo = 0,
     required this.createdAt,
   });
 
@@ -519,7 +524,7 @@ class RiderRepository {
 
     final payments = await _supabase
         .from('payments')
-        .select('rider_payout, created_at, method, amount, platform_commission, booking_type, status')
+        .select('rider_payout, created_at, method, amount, platform_commission, promo_discount, booking_type, status')
         .eq('rider_id', riderId);
 
     final records = <EarningRecord>[];
@@ -533,8 +538,9 @@ class RiderRepository {
           method: row['method'] as String? ?? '',
           bookingType: row['booking_type'] as String? ?? '',
           amount: (row['amount'] as num?)?.toDouble() ?? 0,
-          commission: (row['platform_commission'] as num?)?.toDouble() ?? 0,
+          commission: ((row['platform_commission'] as num?)?.toDouble() ?? 0) + ((row['promo_discount'] as num?)?.toDouble() ?? 0),
           payout: payout,
+          promo: (row['promo_discount'] as num?)?.toDouble() ?? 0,
           createdAt: local,
         ));
       }

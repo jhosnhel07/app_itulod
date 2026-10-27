@@ -17,6 +17,8 @@ import '../widgets/notifications_tab.dart';
 import '../../../chat/presentation/providers/chat_provider.dart';
 import '../../../chat/presentation/screens/chat_screen.dart';
 import '../../../chat/presentation/screens/messages_screen.dart';
+import '../../../promos/data/promo_repository.dart';
+import '../../../promos/presentation/screens/my_promos_screen.dart';
 import 'book_food_screen.dart';
 import 'book_hauling_screen.dart';
 import 'book_parcel_screen.dart';
@@ -84,6 +86,7 @@ class _CustomerDashboardScreenState
         ref.invalidate(notificationsProvider);
         ref.invalidate(unreadNotificationsProvider);
         ref.invalidate(unpaidFeesProvider);
+        ref.invalidate(myPromosProvider); // a new promo arrives as a notification
       },
     );
     // Automatic booking expiration: catches anything the 15-minute grace
@@ -116,6 +119,12 @@ class _CustomerDashboardScreenState
   }
 
   void _openLink(String link) {
+    // a tapped promo notification → My promos on it (web sql/053)
+    final promo = MyPromosScreen.forLink(link);
+    if (promo != null && mounted) {
+      Navigator.of(context).push(promo);
+      return;
+    }
     final route = ChatScreen.forLink(link);
     if (route == null || !mounted) return;
     setState(() => _index = _messagesTab);
@@ -130,6 +139,7 @@ class _CustomerDashboardScreenState
       LastPlace.saveTab('customer', profile.id, _index);
     }
     final unreadAsync = ref.watch(unreadNotificationsProvider);
+    final readyPromos = (ref.watch(myPromosProvider).valueOrNull ?? const []).where((p) => p.isReady).length;
 
     final tabs = [
       const CustomerHomeTab(),
@@ -173,6 +183,18 @@ class _CustomerDashboardScreenState
                               .copyWith(color: Colors.white70),
                         ),
                       ],
+                    ),
+                  ),
+                  // My promos, with how many are ready to use (web: the sidebar link)
+                  IconButton(
+                    key: const Key('topbar-promos'),
+                    tooltip: 'My promos',
+                    onPressed: () => Navigator.of(context).push(MyPromosScreen.route()),
+                    icon: Badge(
+                      isLabelVisible: readyPromos > 0,
+                      label: Text('$readyPromos'),
+                      backgroundColor: AppColors.danger,
+                      child: const Icon(Icons.confirmation_number_outlined, color: Colors.white),
                     ),
                   ),
                   // Profile picture → My profile, Dark mode, Log out.

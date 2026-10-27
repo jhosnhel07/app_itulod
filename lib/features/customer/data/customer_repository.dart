@@ -61,20 +61,6 @@ class TransportPaymentRow {
 
 double _round2(double v) => (v * 100).roundToDouble() / 100;
 
-/// Result of [CustomerRepository.previewPromo].
-class PromoPreview {
-  final String? code;
-  final double discount;
-  final String? error;
-
-  const PromoPreview({required this.code, required this.discount}) : error = null;
-  const PromoPreview.invalid(this.error)
-      : code = null,
-        discount = 0;
-
-  bool get isValid => error == null;
-}
-
 /// Snapshot shown on the customer home tab — lifetime stats plus whatever
 /// booking is currently in flight. Mirrors the web dashboard's "home" view.
 /// One online rider on the customer's "riders near you" map.
@@ -218,55 +204,8 @@ class CustomerRepository {
     return TransportBookingModel.fromJson(row);
   }
 
-  /// Applies a promo code to a just-placed ride via the `redeem-promo` Edge
-  /// Function (rides only, one use per customer per code). Returns the
-  /// discount in pesos; throws with the server's message on rejection.
-  Future<double> redeemPromo({
-    required String code,
-    required String bookingId,
-  }) async {
-    final data = await _invoke('redeem-promo', {
-      'code': code,
-      'booking_type': 'transport',
-      'booking_id': bookingId,
-    }, fallbackError: 'That promo code could not be applied.');
-    return (data['discount_amount'] as num?)?.toDouble() ?? 0;
-  }
-
-  /// Client-side preview of a promo before the ride is placed, using the
-  /// same rules `redeem-promo` enforces. The server stays authoritative —
-  /// this only shows the customer what to expect.
-  Future<PromoPreview> previewPromo(String code, double fare) async {
-    final normalized = code.trim().toUpperCase();
-    if (normalized.isEmpty) return const PromoPreview.invalid('Enter a promo code.');
-    final row = await _supabase
-        .from('promo_codes')
-        .select()
-        .ilike('code', normalized)
-        .maybeSingle();
-    if (row == null || row['active'] != true) {
-      return const PromoPreview.invalid('That promo code is not valid.');
-    }
-    final expires = DateTime.tryParse(row['expires_at'] as String? ?? '');
-    if (expires != null && DateTime.now().isAfter(expires)) {
-      return const PromoPreview.invalid('That promo code has expired.');
-    }
-    final maxUses = row['max_uses'] as int?;
-    final used = row['uses_count'] as int? ?? 0;
-    if (maxUses != null && used >= maxUses) {
-      return const PromoPreview.invalid('That promo code has been fully used.');
-    }
-    final minFare = (row['min_fare'] as num?)?.toDouble();
-    if (minFare != null && fare < minFare) {
-      return PromoPreview.invalid(
-          'This code needs a fare of at least ₱${minFare.toStringAsFixed(2)}.');
-    }
-    final value = (row['discount_value'] as num?)?.toDouble() ?? 0;
-    var discount = row['discount_type'] == 'percent' ? fare * value / 100 : value;
-    if (discount > fare) discount = fare;
-    return PromoPreview(
-        code: normalized, discount: double.parse(discount.toStringAsFixed(2)));
-  }
+  // Promos are picked and applied through features/promos (PromoRepository,
+  // redeem-promo — any service, web sql/053).
 
   /// Places a cart-based food order exactly like the web checkout
   /// (customer.js wireFoodForm): the order row, then one
@@ -328,7 +267,8 @@ class CustomerRepository {
     return FoodDeliveryModel.fromJson(row);
   }
 
-  Future<void> createParcelBooking({
+  /// Returns the new booking's id (a picked promo is applied to it).
+  Future<String> createParcelBooking({
     required String customerId,
     required VehicleModel vehicle,
     required String senderName,
@@ -355,7 +295,7 @@ class CustomerRepository {
     final effectiveKm = isRoundTrip ? (km * 2) : km;
     final fare = FareEstimator.estimateFare(vehicle, effectiveKm);
 
-    await _supabase.from('parcel_deliveries').insert({
+    final row = await _supabase.from('parcel_deliveries').insert({
       'customer_id': customerId,
       'sender_name': senderName.trim(),
       'sender_phone': senderPhone?.trim(),
@@ -374,7 +314,8 @@ class CustomerRepository {
       'payment_method': paymentMethod,
       'is_round_trip': isRoundTrip,
       'cod_amount': codAmount,
-    });
+    }).select('id').single();
+    return row['id'] as String;
   }
 
   /// Books a hauling job (sql/022). Same trust model as the other kinds:

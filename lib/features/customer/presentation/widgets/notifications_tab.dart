@@ -8,6 +8,7 @@ import '../../../../core/constants/app_typography.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../data/customer_repository.dart';
 import '../../../chat/presentation/screens/chat_screen.dart';
+import '../../../promos/presentation/screens/my_promos_screen.dart';
 import 'customer_bookings_tab.dart'
     show authProfileIdProvider, customerHistoryProvider;
 
@@ -143,6 +144,7 @@ final _bookingRe = RegExp(
 IconData _iconFor(Map<String, dynamic> n) {
   if ((n['link']?.toString() ?? '').startsWith('messages/')) return Icons.chat_bubble_rounded;
   if ((n['link']?.toString() ?? '').startsWith('announcement/')) return Icons.campaign_rounded; // from the admin
+  if ((n['link']?.toString() ?? '').startsWith('promo/')) return Icons.confirmation_number_rounded; // a promo to claim
   final t = '${n['title']} ${n['message']}'.toLowerCase();
   if (RegExp(r'refund|wallet|payment|fee|tip|bonus').hasMatch(t)) return Icons.account_balance_wallet_rounded;
   if (RegExp(r'cancel|expired|no-show|not approved').hasMatch(t)) return Icons.error_outline_rounded;
@@ -170,6 +172,12 @@ class _NotificationRow extends ConsumerWidget {
     final chat = ChatScreen.forLink(n['link']?.toString());
     if (chat != null) {
       await Navigator.of(context).push(chat);
+      return;
+    }
+    // A promo opens My promos on it, with Claim (web sql/053).
+    final promo = MyPromosScreen.forLink(n['link']?.toString());
+    if (promo != null) {
+      await Navigator.of(context).push(promo);
       return;
     }
     await showModalBottomSheet<void>(

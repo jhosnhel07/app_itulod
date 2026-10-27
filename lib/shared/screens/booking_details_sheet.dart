@@ -533,11 +533,11 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
             'Out of stock',
             '− ${Formatters.currency(_outOfStock)}'
             '${booking.paymentStatus == 'paid' && (booking.paymentMethod == 'gcash' || booking.paymentMethod == 'wallet') ? ' · refunded to your iTULOD wallet' : ''}'),
+      // the promo taken off (web sql/053), above the total it lowered
+      if ((booking.discountAmount ?? 0) > 0)
+        _detailRow('Promo ${booking.promoCode ?? ''}', '− ${Formatters.currency(booking.discountAmount)}'),
       if (booking.finalFare != null || booking.estimatedFare != null)
         _totalRow('Total', Formatters.currency(booking.finalFare ?? booking.estimatedFare)),
-      if (booking.promoCode != null && booking.promoCode!.isNotEmpty)
-        _detailRow('Promo', '${booking.promoCode}'
-            '${(booking.discountAmount ?? 0) > 0 ? ' (−${Formatters.currency(booking.discountAmount)})' : ''}'),
       _detailRow('Method', paymentMethodLabel(booking.paymentMethod)),
       if (booking.paymentStatus != null)
         Padding(
@@ -709,6 +709,9 @@ class _BookingDetailsSheetState extends ConsumerState<BookingDetailsSheet> {
     return _section('Your earnings', [
       if (e != null) ...[
         _detailRow(ended ? 'Fee from the customer' : 'Fare', Formatters.currency(shownFare)),
+        // a promo is paid by iTULOD — the rider still earns from the full fare
+        if (!ended && (booking.discountAmount ?? 0) > 0)
+          _detailRow('Promo ${booking.promoCode ?? ''}', '${Formatters.currency(booking.discountAmount)} · paid by iTULOD, not you'),
         if (((e['commission'] as num?) ?? 0) > 0)
           _detailRow('iTULOD commission', '− ${Formatters.currency((e['commission'] as num).toDouble())}'),
         if (tip > 0) _detailRow('Tip from the customer', Formatters.currency(tip)),

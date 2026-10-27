@@ -11,6 +11,8 @@ import '../../../../shared/widgets/booking_stepper.dart';
 import '../../../../shared/widgets/success_moment.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/customer_repository.dart';
+import '../../../promos/data/promo_repository.dart';
+import '../../../promos/presentation/widgets/promo_picker.dart';
 import 'booking_receipt_screen.dart';
 
 /// Shown after the customer fills out the ride form and before the booking
@@ -59,41 +61,13 @@ class BookingConfirmationScreen extends ConsumerStatefulWidget {
 
 class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationScreen> {
   bool _processing = false;
-  final _promoController = TextEditingController();
-  bool _validatingPromo = false;
-  PromoPreview? _promo;
+  /// The promo picked from My promos (web sql/053), applied once the ride is placed.
+  String? _promoCode;
 
   bool get _paysOnline => widget.paymentMethod == 'gcash' || widget.paymentMethod == 'wallet';
-  double get _discount => _promo?.discount ?? 0;
+  double get _discount => PromoPicker.discountOf(
+      ref.watch(myPromosProvider).valueOrNull ?? const [], _promoCode, BookingKind.transport, widget.fare);
   double get _total => (widget.fare - _discount).clamp(0, double.infinity).toDouble();
-
-  @override
-  void dispose() {
-    _promoController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _applyPromo() async {
-    final code = _promoController.text.trim();
-    if (code.isEmpty) return;
-
-    setState(() => _validatingPromo = true);
-    PromoPreview preview;
-    try {
-      preview = await ref.read(customerRepositoryProvider).previewPromo(code, widget.fare);
-    } catch (e) {
-      preview = const PromoPreview.invalid('Could not check that code right now.');
-    }
-    if (!mounted) return;
-    setState(() => _validatingPromo = false);
-    if (!preview.isValid) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(preview.error!), backgroundColor: AppColors.warning),
-      );
-      return;
-    }
-    setState(() => _promo = preview);
-  }
 
   Future<void> _confirm() async {
     setState(() => _processing = true);
@@ -118,22 +92,11 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
 
       // The promo is redeemed server-side against the placed booking; a
       // rejection (already used, expired…) leaves the ride booked at full fare.
-      final promo = _promo;
-      if (promo != null && promo.code != null) {
-        try {
-          final saved = await repo.redeemPromo(code: promo.code!, bookingId: booking.id);
-          messenger.showSnackBar(SnackBar(
-            content: Text('Promo applied — you saved ${Formatters.currency(saved)}!'),
-            backgroundColor: AppColors.success,
-          ));
-          final refreshed = await repo.fetchHistory(BookingKind.transport, profile.id);
-          booking = refreshed.firstWhere((b) => b.id == booking.id, orElse: () => booking);
-        } catch (e) {
-          messenger.showSnackBar(SnackBar(
-            content: Text('Ride booked, but the promo was not applied: ${_clean(e)}'),
-            backgroundColor: AppColors.warning,
-          ));
-        }
+      final saved = await applyPickedPromo(ref, messenger,
+          code: _promoCode, kind: BookingKind.transport, bookingId: booking.id);
+      if (saved > 0) {
+        final refreshed = await repo.fetchHistory(BookingKind.transport, profile.id);
+        booking = refreshed.firstWhere((b) => b.id == booking.id, orElse: () => booking);
       }
 
       // The booking is placed only — online payment (when chosen) is started
@@ -208,41 +171,11 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
               ),
             ),
             const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Promo code', style: AppTypography.bodyBold),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: _promoController,
-                            textCapitalization: TextCapitalization.characters,
-                            decoration: const InputDecoration(
-                              hintText: 'Enter promo code',
-                              contentPadding: EdgeInsets.symmetric(horizontal: 16),
-                            ),
-                            onChanged: (_) {
-                              if (_promo != null) setState(() => _promo = null);
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        OutlinedButton(
-                          onPressed: _validatingPromo || _promo != null ? null : _applyPromo,
-                          child: _validatingPromo
-                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                              : Text(_promo != null ? 'Applied' : 'Apply'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+            PromoPicker(
+              kind: BookingKind.transport,
+              fare: widget.fare,
+              selected: _promoCode,
+              onChanged: (c) => setState(() => _promoCode = c),
             ),
             const SizedBox(height: 16),
             Container(
@@ -254,7 +187,7 @@ class _BookingConfirmationScreenState extends ConsumerState<BookingConfirmationS
               ),
               child: Column(
                 children: [
-                  if (_promo != null) ...[
+                  if (_discount > 0) ...[
                     _totalRow('Fare', Formatters.currency(widget.fare)),
                     const SizedBox(height: 4),
                     _totalRow('Promo discount', '-${Formatters.currency(_discount)}'),

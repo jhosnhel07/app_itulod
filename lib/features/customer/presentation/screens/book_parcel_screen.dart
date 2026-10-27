@@ -24,6 +24,7 @@ import '../widgets/route_preview_map.dart';
 import 'map_picker_screen.dart';
 import '../../../../shared/models/booking_models.dart';
 import '../widgets/active_booking_banner.dart';
+import '../../../promos/presentation/widgets/promo_picker.dart';
 
 const List<String> _parcelSizes = [
   'Small (fits a shoebox)',
@@ -53,6 +54,8 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen>
   String _parcelSize = _parcelSizes.first;
   String _paymentMethod = 'cash';
   bool _submitting = false;
+  /// The promo picked on the Payment step (web sql/053).
+  String? _promoCode;
 
   bool _isRoundTrip = false;
   final _codAmountController = TextEditingController();
@@ -231,7 +234,8 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen>
     setState(() => _submitting = true);
     try {
       final profile = ref.read(authNotifierProvider).profile!;
-      await ref.read(customerRepositoryProvider).createParcelBooking(
+      final messenger = ScaffoldMessenger.of(context);
+      final bookingId = await ref.read(customerRepositoryProvider).createParcelBooking(
             customerId: profile.id,
             vehicle: _vehicle!,
             senderName: _senderNameController.text,
@@ -250,6 +254,8 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen>
             codAmount: double.tryParse(_codAmountController.text) ?? 0.0,
           );
       finishDraft(); // booked — nothing to come back to
+      // the promo picked on the Payment step (web sql/053)
+      await applyPickedPromo(ref, messenger, code: _promoCode, kind: BookingKind.parcel, bookingId: bookingId);
 
       if (!mounted) return;
       await showSuccessMoment(
@@ -481,6 +487,13 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen>
                     value: _paymentMethod,
                     onChanged: (v) => setState(() => _paymentMethod = v),
                     onlineNote: 'The total shown is the total you pay. You can pay once a rider accepts.',
+                  ),
+                  const SizedBox(height: 12),
+                  PromoPicker(
+                    kind: BookingKind.parcel,
+                    fare: _fare ?? 0,
+                    selected: _promoCode,
+                    onChanged: (c) => setState(() => _promoCode = c),
                   ),
               ]),
             ],

@@ -23,11 +23,12 @@ import '../../../../shared/widgets/map_widgets.dart';
 import 'map_picker_screen.dart';
 import '../widgets/active_booking_banner.dart';
 import '../../../../shared/models/booking_models.dart';
+import '../../../promos/presentation/widgets/promo_picker.dart';
 
 /// Checkout for a cart-based food order — mirrors the web's food form
 /// (customer.js wireFoodForm): items + distance-based delivery fee, a vehicle,
-/// and a payment method. GCash/wallet is charged only once the rider confirms
-/// the fare at pickup, never at checkout.
+/// a payment method and a promo. GCash/wallet is paid once a rider accepts,
+/// never at checkout.
 class FoodCartScreen extends ConsumerStatefulWidget {
   const FoodCartScreen({super.key});
 
@@ -42,6 +43,8 @@ class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
   bool _submitting = false;
   VehicleModel? _vehicle;
   String _paymentMethod = 'cash';
+  /// The promo picked at checkout (web sql/053).
+  String? _promoCode;
 
   /// Road distance from OSRM when the restaurant has coordinates; otherwise
   /// the straight-line / address estimate stands in.
@@ -152,6 +155,7 @@ class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
 
     if (!await okToBookAgain(context, ref, BookingKind.food) || !mounted) return;
     setState(() => _submitting = true);
+    final messenger = ScaffoldMessenger.of(context);
     try {
       final order = await ref.read(customerRepositoryProvider).createFoodBooking(
             customerId: user.id,
@@ -175,6 +179,8 @@ class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
           );
 
       ref.read(cartProvider.notifier).clearCart();
+      // the promo picked at checkout (web sql/053)
+      await applyPickedPromo(ref, messenger, code: _promoCode, kind: BookingKind.food, bookingId: order.id);
       if (!mounted) return;
       await showSuccessMoment(
         context,
@@ -300,6 +306,13 @@ class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
                     ),
                     const SizedBox(height: 16),
                     _fareBox(cart.totalPrice),
+                    const SizedBox(height: 12),
+                    PromoPicker(
+                      kind: BookingKind.food,
+                      fare: _deliveryFee == null ? 0 : cart.totalPrice + _deliveryFee!,
+                      selected: _promoCode,
+                      onChanged: (c) => setState(() => _promoCode = c),
+                    ),
                     const SizedBox(height: 16),
                   ],
                 );
