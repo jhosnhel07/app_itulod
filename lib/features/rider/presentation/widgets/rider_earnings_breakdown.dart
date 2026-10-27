@@ -216,22 +216,27 @@ class EarningRecordsCard extends StatefulWidget {
 
 class _EarningRecordsCardState extends State<EarningRecordsCard> {
   String _filter = 'all';
-  static const _limit = 50;
+  /// 20 at a time; "Show more" adds the next 20 (web: showMorePayRecords).
+  static const _page = 20;
+  int _shown = _page;
 
   @override
   Widget build(BuildContext context) {
     final all = widget.records.where((r) => _filter == 'all' || r.method == _filter).toList();
-    final shown = all.take(_limit).toList();
+    final shown = all.take(_shown).toList();
     return _Section(
       title: 'Earnings records',
-      subtitle: 'Every paid trip, newest first',
+      subtitle: 'Every paid trip, newest first — what the customer paid, the commission and your share',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _Pills(
             options: const [('all', 'All'), ('cash', 'Cash'), ('gcash', 'GCash'), ('wallet', 'Wallet')],
             selected: _filter,
-            onChanged: (v) => setState(() => _filter = v),
+            onChanged: (v) => setState(() {
+              _filter = v;
+              _shown = _page;
+            }),
           ),
           const SizedBox(height: 6),
           if (shown.isEmpty)
@@ -247,10 +252,22 @@ class _EarningRecordsCardState extends State<EarningRecordsCard> {
             )
           else
             for (var i = 0; i < shown.length; i++) _recordRow(shown[i], last: i == shown.length - 1),
-          if (all.length > _limit)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Center(child: Text('Showing the latest $_limit.', style: AppTypography.caption)),
+          if (all.length > shown.length)
+            Container(
+              margin: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(top: 10),
+              decoration: BoxDecoration(border: Border(top: BorderSide(color: AppColors.cardBorder))),
+              child: Row(
+                children: [
+                  Expanded(child: Text('Showing ${shown.length} of ${all.length}', style: AppTypography.caption)),
+                  OutlinedButton.icon(
+                    key: const Key('records-more'),
+                    onPressed: () => setState(() => _shown += _page),
+                    icon: const Icon(Icons.expand_more_rounded, size: 18),
+                    label: const Text('Show more'),
+                  ),
+                ],
+              ),
             ),
         ],
       ),
@@ -280,25 +297,22 @@ class _EarningRecordsCardState extends State<EarningRecordsCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(what, style: AppTypography.bodyMedium),
-                Text('${Formatters.date(r.createdAt)} · ${m?.label ?? r.method}',
-                    style: AppTypography.caption.copyWith(fontSize: 11.5)),
+                Text(Formatters.date(r.createdAt),
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: AppTypography.caption.copyWith(fontSize: 11.5)),
+                Text(m?.label ?? r.method, style: AppTypography.caption.copyWith(fontSize: 11.5)),
               ],
             ),
           ),
           const SizedBox(width: 8),
-          Flexible(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text('+${Formatters.currency(r.payout)}',
-                    style: AppTypography.bodyBold.copyWith(color: AppColors.success)),
-                Text(
-                  'Paid ${Formatters.currency(r.amount)}${r.commission > 0 ? ' · commission ${Formatters.currency(r.commission)}' : ''}',
-                  style: AppTypography.caption.copyWith(fontSize: 11),
-                  textAlign: TextAlign.right,
-                ),
-              ],
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('+${Formatters.currency(r.payout)}',
+                  style: AppTypography.bodyBold.copyWith(color: AppColors.success)),
+              Text('Paid ${Formatters.currency(r.amount)}', style: AppTypography.caption.copyWith(fontSize: 11)),
+              if (r.commission > 0)
+                Text('−${Formatters.currency(r.commission)} commission', style: AppTypography.caption.copyWith(fontSize: 11)),
+            ],
           ),
         ],
       ),
