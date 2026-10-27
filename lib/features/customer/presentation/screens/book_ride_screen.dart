@@ -18,6 +18,8 @@ import '../widgets/riders_near_you_map.dart';
 import '../providers/saved_addresses_provider.dart';
 import 'booking_confirmation_screen.dart';
 import 'map_picker_screen.dart';
+import '../../../../shared/models/booking_models.dart';
+import '../widgets/active_booking_banner.dart';
 
 class BookRideScreen extends ConsumerStatefulWidget {
   const BookRideScreen({super.key});
@@ -289,7 +291,7 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen>
 
   // ── Submit ────────────────────────────────────────────────────────────
 
-  void _submit() {
+  Future<void> _submit() async {
     if (_vehicle == null) return; // the fields were checked by BookingStepper
     if (!checkServiceArea(context, {
       'Pickup': _pickupPoint,
@@ -319,6 +321,8 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen>
       }
     }
 
+    // another ride while one is still going? ask first
+    if (!await okToBookAgain(context, ref, BookingKind.transport) || !mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => BookingConfirmationScreen(
@@ -368,6 +372,8 @@ class _BookRideScreenState extends ConsumerState<BookRideScreen>
             onChanged: () => setState(() {}),
             steps: [
               BookingStep('Where', [
+                  // a booking you still have going (+ View / Chat / Cancel)
+                  const ActiveBookingBanner(),
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),

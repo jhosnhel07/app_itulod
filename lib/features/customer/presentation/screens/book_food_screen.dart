@@ -19,6 +19,7 @@ import '../providers/cart_provider.dart';
 import '../providers/saved_addresses_provider.dart';
 import '../../../../shared/widgets/map_widgets.dart';
 import 'map_picker_screen.dart';
+import '../widgets/active_booking_banner.dart';
 import 'restaurant_menu_screen.dart';
 
 /// "Choose a restaurant" — 200+ places across Ilocos Norte, narrowed by
@@ -275,6 +276,11 @@ class _BookFoodScreenState extends ConsumerState<BookFoodScreen> {
 
     return Column(
       children: [
+        // a booking you still have going (+ View / Chat / Cancel)
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: ActiveBookingBanner(),
+        ),
         // ── Filter panel ──────────────────────────────────────────────────
         Container(
           decoration: BoxDecoration(

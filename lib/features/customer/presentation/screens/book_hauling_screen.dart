@@ -23,6 +23,7 @@ import '../widgets/payment_method_selector.dart';
 import '../widgets/riders_near_you_map.dart';
 import '../widgets/route_preview_map.dart';
 import 'map_picker_screen.dart';
+import '../widgets/active_booking_banner.dart';
 
 const Map<String, IconData> _categoryIcons = {
   'furniture': Icons.chair_rounded,
@@ -252,6 +253,7 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen>
       }
     }
 
+    if (!await okToBookAgain(context, ref, BookingKind.hauling) || !mounted) return;
     setState(() => _submitting = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -340,6 +342,8 @@ class _BookHaulingScreenState extends ConsumerState<BookHaulingScreen>
             ],
             steps: [
               BookingStep('Where', [
+                  // a booking you still have going (+ View / Chat / Cancel)
+                  const ActiveBookingBanner(),
                   _section('Pickup', Icons.location_on_rounded, [
                     TextFormField(
                       controller: _senderName,

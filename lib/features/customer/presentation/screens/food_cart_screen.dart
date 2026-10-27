@@ -21,6 +21,8 @@ import '../widgets/payment_method_selector.dart';
 import '../widgets/riders_near_you_map.dart';
 import '../../../../shared/widgets/map_widgets.dart';
 import 'map_picker_screen.dart';
+import '../widgets/active_booking_banner.dart';
+import '../../../../shared/models/booking_models.dart';
 
 /// Checkout for a cart-based food order — mirrors the web's food form
 /// (customer.js wireFoodForm): items + distance-based delivery fee, a vehicle,
@@ -148,6 +150,7 @@ class _FoodCartScreenState extends ConsumerState<FoodCartScreen> {
     final user = ref.read(authNotifierProvider).profile;
     if (user == null) return;
 
+    if (!await okToBookAgain(context, ref, BookingKind.food) || !mounted) return;
     setState(() => _submitting = true);
     try {
       final order = await ref.read(customerRepositoryProvider).createFoodBooking(

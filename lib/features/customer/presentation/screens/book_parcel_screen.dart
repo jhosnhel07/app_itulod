@@ -22,6 +22,8 @@ import '../widgets/payment_method_selector.dart';
 import '../widgets/riders_near_you_map.dart';
 import '../widgets/route_preview_map.dart';
 import 'map_picker_screen.dart';
+import '../../../../shared/models/booking_models.dart';
+import '../widgets/active_booking_banner.dart';
 
 const List<String> _parcelSizes = [
   'Small (fits a shoebox)',
@@ -225,6 +227,7 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen>
     if (_vehicle == null) return; // the fields were checked by BookingStepper
     if (!checkServiceArea(context, {'Sender address': _senderPoint, 'Receiver address': _receiverPoint})) return;
 
+    if (!await okToBookAgain(context, ref, BookingKind.parcel) || !mounted) return;
     setState(() => _submitting = true);
     try {
       final profile = ref.read(authNotifierProvider).profile!;
@@ -312,6 +315,8 @@ class _BookParcelScreenState extends ConsumerState<BookParcelScreen>
             ],
             steps: [
               BookingStep('Where', [
+                  // a booking you still have going (+ View / Chat / Cancel)
+                  const ActiveBookingBanner(),
                   _SectionCard(
                     title: 'Sender',
                     children: [

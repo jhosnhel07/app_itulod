@@ -89,6 +89,9 @@ class CustomerHomeSummary {
   final double totalSpent;
   final int tripsThisMonth;
   final BookingBase? activeBooking;
+  /// Every booking still going (pending / accepted / ongoing), newest first —
+  /// the banner on the booking screens.
+  final List<BookingBase> activeBookings;
   final String? activeRiderName;
   final String? activeRiderPhone;
 
@@ -97,12 +100,27 @@ class CustomerHomeSummary {
     this.totalSpent = 0,
     this.tripsThisMonth = 0,
     this.activeBooking,
+    this.activeBookings = const [],
     this.activeRiderName,
     this.activeRiderPhone,
   });
 }
 
 class CustomerRepository {
+  /// Your newest booking of [kind] that is still going, checked fresh before
+  /// booking the same service again (web: okToBookAgain).
+  Future<BookingBase?> findActiveBooking(String customerId, BookingKind kind) async {
+    final rows = await _supabase
+        .from(kind.tableName)
+        .select()
+        .eq('customer_id', customerId)
+        .inFilter('status', const ['pending', 'accepted', 'ongoing'])
+        .order('created_at', ascending: false)
+        .limit(1);
+    final list = rows as List;
+    return list.isEmpty ? null : _bookingFromRow(kind, Map<String, dynamic>.from(list.first as Map));
+  }
+
   final SupabaseClient _supabase;
 
   CustomerRepository(this._supabase);
@@ -724,6 +742,10 @@ class CustomerRepository {
       totalSpent: spent,
       tripsThisMonth: thisMonth,
       activeBooking: active,
+      activeBookings: [
+        for (final b in all)
+          if (b.status == 'pending' || b.status == 'accepted' || b.status == 'ongoing') b,
+      ],
       activeRiderName: riderName,
       activeRiderPhone: riderPhone,
     );
